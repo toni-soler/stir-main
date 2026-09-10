@@ -5,3 +5,4 @@ dist/
 target/
 __pycache__/
 vendor/
+*.log

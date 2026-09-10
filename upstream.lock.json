@@ -1,0 +1,6 @@
+{
+  "idax-core-runtime": {"url":"https://github.com/toni-soler/idax-core-runtime.git","commit":"265b4fd52fc5d0742bb4e03ca752878f75e13c8e"},
+  "idax-shell": {"url":"https://github.com/toni-soler/idax-shell.git","commit":"a697c946e72feffcd20598ab61eada48d060c99a"},
+  "idax-ledger": {"url":"https://github.com/toni-soler/idax-ledger.git","commit":"31e56851f86ec3b327e6e6c2aec3f1590f6c00fc"},
+  "ostris": {"url":"https://github.com/toni-soler/ostris.git","commit":"d92aa1f605884ebdcd8e97fff46f4067b0416bcc"}
+}

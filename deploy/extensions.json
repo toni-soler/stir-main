@@ -1,0 +1,1 @@
+{"schemaVersion":1,"extensions":[{"id":"stir","name":"STIR","description":"Sistema Transparente de Intercambio de Recursos","route":"/stir","glyph":"S","color":"#39c9aa"},{"id":"ostris","name":"osTRIS","description":"Economic protocol","route":"/ostris"},{"id":"ledger","name":"IDAX Ledger","description":"Proof and evidence","route":"/ledger"}]}

@@ -1,0 +1,12 @@
+diff --git a/backend/src/main/java/es/idynamicsax/ledger/config/LedgerFlywayConfig.java b/backend/src/main/java/es/idynamicsax/ledger/config/LedgerFlywayConfig.java
+index 1ffd463..95d5267 100644
+--- a/backend/src/main/java/es/idynamicsax/ledger/config/LedgerFlywayConfig.java
++++ b/backend/src/main/java/es/idynamicsax/ledger/config/LedgerFlywayConfig.java
+@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
+ 
+ @Configuration
++@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="idax.module.migrations.enabled", havingValue="true", matchIfMissing=true)
+ public class LedgerFlywayConfig {
+     @Bean
+     Flyway flywayLedger(DataSource dataSource) {

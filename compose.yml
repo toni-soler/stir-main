@@ -1,0 +1,171 @@
+name: stir-dev
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: idax
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d idax"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  core-migrations:
+    build: ./vendor/idax-core-runtime
+    entrypoint: [/bin/sh, -ec]
+    command: ['exec flyway -url=jdbc:postgresql://postgres:5432/idax -user=postgres -password="$$(cat /run/secrets/postgres_password)" -schemas=idax_core -table=flyway_schema_history_idax_core migrate']
+    secrets: [postgres_password]
+    depends_on:
+      postgres: {condition: service_healthy}
+    networks: [data]
+  module-migrations:
+    image: flyway/flyway:11.12.0-alpine
+    entrypoint: [/bin/sh, /migrate.sh]
+    volumes:
+      - ./deploy/migrate-modules.sh:/migrate.sh:ro
+      - ./vendor/idax-shell/src/main/resources/db/migration-idax-shell:/migrations/idax_shell:ro
+      - ../stir-backend/src/main/resources/db/migration-stir:/migrations/stir:ro
+      - ./vendor/idax-ledger/backend/src/main/resources/db/migration-idax-ledger:/migrations/idax_ledger:ro
+      - ./vendor/ostris/backend/src/main/resources/db/migration-ostris:/migrations/ostris:ro
+    secrets: [postgres_password]
+    depends_on:
+      core-migrations: {condition: service_completed_successfully}
+    networks: [data]
+  runtime-provision:
+    image: postgres:17-alpine
+    entrypoint: [/bin/sh, /provision.sh]
+    volumes: [./deploy/provision-runtime.sh:/provision.sh:ro]
+    secrets: [postgres_password, runtime_password]
+    depends_on:
+      module-migrations: {condition: service_completed_successfully}
+    networks: [data]
+  shell:
+    build:
+      context: ./vendor/idax-shell
+      dockerfile: ../../deploy/Shell.Dockerfile
+    entrypoint: [/bin/sh, /app/run-shell.sh]
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/idax
+      DATABASE_USER: idax_backend
+      SPRING_FLYWAY_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: -Xmx512m
+      IDAX_LOCAL_DEMO_ENABLED: "true"
+      IDAX_LOCAL_DEMO_EMAIL: admin@stir.test
+      IDAX_LOCAL_DEMO_TENANT_CODE: stir
+      IDAX_LOCAL_DEMO_TENANT_NAME: STIR Development
+      EXTENSION_MANIFEST: file:/app/extensions.json
+    volumes:
+      - ./deploy/run-shell.sh:/app/run-shell.sh:ro
+      - ./deploy/extensions.json:/app/extensions.json:ro
+    secrets: [runtime_password, jwt_private_key, jwt_public_key, bootstrap_token, login_password]
+    depends_on:
+      runtime-provision: {condition: service_completed_successfully}
+    networks: [edge, data]
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://localhost:8080/actuator/health/readiness']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+  stir:
+    build: ../stir-backend
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/idax
+      DATABASE_USER: idax_backend
+      JAVA_TOOL_OPTIONS: -Xmx384m
+    secrets: [runtime_password, jwt_public_key]
+    depends_on:
+      runtime-provision: {condition: service_completed_successfully}
+    networks: [edge, data]
+    ports: ['127.0.0.1:${STIR_API_PORT:-8096}:8096']
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://localhost:8096/actuator/health/readiness']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+  stir-ui:
+    build: ../stir-frontend
+    networks: [edge]
+  ostris:
+    build:
+      context: ./vendor/ostris/backend
+      dockerfile: ../../../deploy/Module.Dockerfile
+    entrypoint: [/bin/sh, /app/run-module.sh]
+    volumes: [./deploy/run-module.sh:/app/run-module.sh:ro]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/idax
+      SPRING_DATASOURCE_USERNAME: idax_backend
+      IDAX_MODULE_MIGRATIONS_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: -Xmx384m
+      IDAX_AUTH_LOCAL_PUBLIC_KEY_LOCATION: file:/run/secrets/jwt_public_key
+      OSTRIS_PROOF_ENABLED: "false"
+      OSTRIS_LEDGER_ENABLED: "false"
+    secrets: [runtime_password, jwt_public_key]
+    depends_on:
+      runtime-provision: {condition: service_completed_successfully}
+    networks: [edge, data]
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://localhost:8095/actuator/health/readiness']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+  ostris-ui:
+    build: ./vendor/ostris/frontend
+    networks: [edge]
+  ledger:
+    build:
+      context: ./vendor/idax-ledger/backend
+      dockerfile: ../../../deploy/Module.Dockerfile
+    entrypoint: [/bin/sh, /app/run-module.sh]
+    volumes: [./deploy/run-module.sh:/app/run-module.sh:ro]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/idax
+      SPRING_DATASOURCE_USERNAME: idax_backend
+      IDAX_MODULE_MIGRATIONS_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: -Xmx384m
+      IDAX_LEDGER_AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/jwt_public_key
+      IDAX_SERVICE_AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/jwt_public_key
+      IDAX_LEDGER_PRIVATE_ENABLED: "false"
+    secrets: [runtime_password, jwt_public_key]
+    depends_on:
+      runtime-provision: {condition: service_completed_successfully}
+    networks: [edge, data]
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://localhost:8094/actuator/health/readiness']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+  ledger-ui:
+    build: ./vendor/idax-ledger/frontend
+    networks: [edge]
+  proxy:
+    image: caddy:2.9-alpine
+    volumes: [./deploy/Caddyfile:/etc/caddy/Caddyfile:ro]
+    ports: ['127.0.0.1:${STIR_HTTP_PORT:-8089}:8088']
+    depends_on:
+      shell: {condition: service_healthy}
+      stir: {condition: service_healthy}
+      stir-ui: {condition: service_started}
+      ledger-ui: {condition: service_started}
+      ostris-ui: {condition: service_started}
+    networks: [edge]
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://localhost:8088/actuator/health/readiness']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+networks:
+  edge: {}
+  data: {internal: true}
+volumes:
+  postgres_data: {}
+secrets:
+  postgres_password: {file: ./.local/secrets/postgres_password}
+  jwt_private_key: {file: ./.local/secrets/jwt_private_key}
+  jwt_public_key: {file: ./.local/secrets/jwt_public_key}
+  bootstrap_token: {file: ./.local/secrets/bootstrap_token}
+  login_password: {file: ./.local/secrets/login_password}
+  runtime_password: {file: ./.local/secrets/runtime_password}

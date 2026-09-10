@@ -1,0 +1,12 @@
+diff --git a/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java b/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java
+index d902410..be65850 100644
+--- a/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java
++++ b/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java
+@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
+ 
+ @Configuration
++@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="idax.module.migrations.enabled", havingValue="true", matchIfMissing=true)
+ public class OstrisFlywayConfig {
+     @Bean
+     Flyway flywayOstris(DataSource dataSource) {

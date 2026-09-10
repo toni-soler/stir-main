@@ -1,0 +1,24 @@
+:8088 {
+  encode zstd gzip
+  handle /extensions/stir/* {
+    reverse_proxy stir-ui:80
+  }
+  handle /extensions/ostris/* {
+    reverse_proxy ostris-ui:80
+  }
+  handle /extensions/ledger/* {
+    reverse_proxy ledger-ui:80
+  }
+  handle /api/stir/* {
+    reverse_proxy stir:8096
+  }
+  handle /api/ostris/* {
+    reverse_proxy ostris:8095
+  }
+  handle /api/ledger/* {
+    reverse_proxy ledger:8094
+  }
+  handle {
+    reverse_proxy shell:8080
+  }
+}
