@@ -1,4 +1,4 @@
-# STIR development instance — 0.1.0-SNAPSHOT
+# STIR development instance — 0.2.0-SNAPSHOT
 
 STIR is Sistema Transparente de Intercambio de Recursos. This repository composes an independent marketplace instance using public IDAX Open Core/Shell, osTRIS and Ledger 0.3.0. Application source is Apache-2.0. Core's publicly downloadable binary retains its separate binary license.
 
