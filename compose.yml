@@ -76,9 +76,11 @@ services:
       DATABASE_URL: jdbc:postgresql://postgres:5432/idax
       DATABASE_USER: idax_backend
       JAVA_TOOL_OPTIONS: -Xmx384m
+      OSTRIS_BASE_URL: http://ostris:8095
     secrets: [runtime_password, jwt_public_key]
     depends_on:
       runtime-provision: {condition: service_completed_successfully}
+      ostris: {condition: service_healthy}
     networks: [edge, data]
     ports: ['127.0.0.1:${STIR_API_PORT:-8096}:8096']
     healthcheck:

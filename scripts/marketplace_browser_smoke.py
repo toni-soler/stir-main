@@ -80,7 +80,10 @@ def main():
             expect(pedro.get_by_text("Puedo hacer 20kg al mismo precio")).to_be_visible()
             pedro.get_by_role("button", name="Aceptar", exact=True).click()
             expect(pedro.get_by_role("heading", name="Acuerdo", exact=True)).to_be_visible()
-            expect(pedro.get_by_text("Pendiente de ejecución económica")).to_be_visible()
+            # This negotiation never set an amount, so 0.3's payer/payee-direction branching
+            # (section 6 of the 0.3 brief) correctly resolves it as NOT_APPLICABLE - a free/
+            # non-monetary exchange - rather than AWAITING_ECONOMIC_EXECUTION.
+            expect(pedro.get_by_text("Sin intercambio económico")).to_be_visible()
             pedro.screenshot(path=str(ROOT/".local/browser-agreement.png"), full_page=True)
 
             assert not errors, errors
