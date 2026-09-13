@@ -30,7 +30,7 @@ def main():
     secret_dir = ROOT / '.local/secrets'
     secret_dir.mkdir(parents=True, exist_ok=True)
     if os.name != 'nt': secret_dir.chmod(0o700)
-    for name in ['postgres_password', 'bootstrap_token', 'login_password', 'runtime_password']:
+    for name in ['postgres_password', 'bootstrap_token', 'login_password', 'runtime_password', 'storage_access_key', 'storage_secret_key']:
         p = secret_dir / name
         if not p.exists(): p.write_text(secrets.token_urlsafe(36), encoding='utf-8')
         if os.name != 'nt': p.chmod(0o600)

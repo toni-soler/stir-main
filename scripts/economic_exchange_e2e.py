@@ -65,18 +65,20 @@ def open_and_accept(base_a, ana, pedro, direction, title, category, first_amount
 
 def run_exchange(base_a, initiator_session, owner_session, agreement_id, initiator_key, owner_key):
     """Activates the Trade, has both parties sign with their own real keys, and commits. Returns
-    the final trade view. `initiator_key`/`owner_key` are (private_key, public_key_b64url) pairs."""
+    the final trade view. `initiator_key`/`owner_key` are (private_key, public_key_b64url,
+    credential_id) triples - credential_id identifies WHICH of the caller's devices signed (see
+    TradeService.authorize()'s docstring); STIR only relays it, osTRIS is the sole verifier."""
     trade = request(base_a+f"/agreements/{agreement_id}/trade/activate",'POST',{},owner_session['accessToken'])
-    for session, (private_key, _) in [(initiator_session, initiator_key), (owner_session, owner_key)]:
+    for session, (private_key, _, credential_id) in [(initiator_session, initiator_key), (owner_session, owner_key)]:
         payload = request(base_a+f"/agreements/{agreement_id}/trade/signing-payload",token=session['accessToken'])
         signature = sign_authorization(private_key, payload['authorizationPayload'])
-        trade = request(base_a+f"/agreements/{agreement_id}/trade/authorizations",'POST',{'signatureBase64url':signature},session['accessToken'])
+        trade = request(base_a+f"/agreements/{agreement_id}/trade/authorizations",'POST',{'credentialId':credential_id,'signatureBase64url':signature},session['accessToken'])
     return request(base_a+f"/agreements/{agreement_id}/trade/commit",'POST',{},owner_session['accessToken'])
 
 def activate_economic(base_a, session):
     private_key, public_key = new_keypair()
-    request(base_a+'/economic/activate','POST',{'publicKeyBase64url':public_key},session['accessToken'])
-    return private_key, public_key
+    activation = request(base_a+'/economic/activate','POST',{'publicKeyBase64url':public_key},session['accessToken'])
+    return private_key, public_key, activation['credentialId']
 
 def main():
     admin = request('/api/shell/v1/auth/login','POST',{'email':'admin@stir.test','password':(ROOT/'.local/secrets/login_password').read_text().strip()})['accessToken']
@@ -158,7 +160,7 @@ def main():
     for session, key in [(pedro, pedro_key), (ana, ana_key)]:
         payload = request(base_a+f"/agreements/{reject_agreement['id']}/trade/signing-payload",token=session['accessToken'])
         signature = sign_authorization(key[0], payload['authorizationPayload'])
-        reject_trade = request(base_a+f"/agreements/{reject_agreement['id']}/trade/authorizations",'POST',{'signatureBase64url':signature},session['accessToken'])
+        reject_trade = request(base_a+f"/agreements/{reject_agreement['id']}/trade/authorizations",'POST',{'credentialId':key[2],'signatureBase64url':signature},session['accessToken'])
     request(base_a+f"/agreements/{reject_agreement['id']}/trade/commit",'POST',{},ana['accessToken'],expected=422)
     rejected = request(base_a+f"/agreements/{reject_agreement['id']}/trade",token=ana['accessToken'])
     assert rejected['executionState'] == 'REJECTED', rejected

@@ -77,10 +77,14 @@ services:
       DATABASE_USER: idax_backend
       JAVA_TOOL_OPTIONS: -Xmx384m
       OSTRIS_BASE_URL: http://ostris:8095
-    secrets: [runtime_password, jwt_public_key]
+      STORAGE_ENDPOINT: http://minio:9000
+      STIR_SITE_NAME: ${STIR_SITE_NAME:-STIR}
+      STIR_PUBLIC_BASE_URL: ${STIR_PUBLIC_BASE_URL:-http://localhost:8089}
+    secrets: [runtime_password, jwt_public_key, storage_access_key, storage_secret_key]
     depends_on:
       runtime-provision: {condition: service_completed_successfully}
       ostris: {condition: service_healthy}
+      minio: {condition: service_healthy}
     networks: [edge, data]
     ports: ['127.0.0.1:${STIR_API_PORT:-8096}:8096']
     healthcheck:
@@ -91,6 +95,19 @@ services:
   stir-ui:
     build: ../stir-frontend
     networks: [edge]
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    entrypoint: [/bin/sh, /run-minio.sh]
+    volumes:
+      - ./deploy/run-minio.sh:/run-minio.sh:ro
+      - minio_data:/data
+    secrets: [storage_access_key, storage_secret_key]
+    networks: [data]
+    healthcheck:
+      test: [CMD, curl, -f, 'http://localhost:9000/minio/health/live']
+      interval: 5s
+      timeout: 5s
+      retries: 30
   ostris:
     build:
       context: ./vendor/ostris/backend
@@ -164,6 +181,7 @@ networks:
   data: {internal: true}
 volumes:
   postgres_data: {}
+  minio_data: {}
 secrets:
   postgres_password: {file: ./.local/secrets/postgres_password}
   jwt_private_key: {file: ./.local/secrets/jwt_private_key}
@@ -171,3 +189,5 @@ secrets:
   bootstrap_token: {file: ./.local/secrets/bootstrap_token}
   login_password: {file: ./.local/secrets/login_password}
   runtime_password: {file: ./.local/secrets/runtime_password}
+  storage_access_key: {file: ./.local/secrets/storage_access_key}
+  storage_secret_key: {file: ./.local/secrets/storage_secret_key}
