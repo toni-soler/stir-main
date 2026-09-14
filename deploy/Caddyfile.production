@@ -1,0 +1,32 @@
+# Production reverse proxy: one real public hostname (set via STIR_PUBLIC_HOSTNAME), automatic
+# HTTPS (Caddy issues and renews a Let's Encrypt certificate for that hostname on its own - no
+# manual cert handling), and an automatic HTTP->HTTPS redirect (Caddy's default behavior for any
+# site block whose address is a real hostname, not ":PORT"). Certificate/account state lives in
+# the caddy_data volume - never versioned, never rebuilt away.
+{$STIR_PUBLIC_HOSTNAME} {
+  encode zstd gzip
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  }
+  handle /extensions/stir/* {
+    reverse_proxy stir-ui:80
+  }
+  handle /extensions/ostris/* {
+    reverse_proxy ostris-ui:80
+  }
+  handle /extensions/ledger/* {
+    reverse_proxy ledger-ui:80
+  }
+  handle /api/stir/* {
+    reverse_proxy stir:8096
+  }
+  handle /api/ostris/* {
+    reverse_proxy ostris:8095
+  }
+  handle /api/ledger/* {
+    reverse_proxy ledger:8094
+  }
+  handle {
+    reverse_proxy shell:8080
+  }
+}

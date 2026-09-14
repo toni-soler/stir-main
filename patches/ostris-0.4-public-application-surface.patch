@@ -1,0 +1,916 @@
+diff --git a/backend/src/main/java/es/idynamicsax/ostris/api/DiscoveryController.java b/backend/src/main/java/es/idynamicsax/ostris/api/DiscoveryController.java
+new file mode 100644
+index 0000000..d794d12
+--- /dev/null
++++ b/backend/src/main/java/es/idynamicsax/ostris/api/DiscoveryController.java
+@@ -0,0 +1,39 @@
++package es.idynamicsax.ostris.api;
++
++import es.idynamicsax.idax.tenant.TenantContext;
++import es.idynamicsax.ostris.service.DiscoveryService;
++import java.util.List;
++import java.util.UUID;
++import org.springframework.security.access.prepost.PreAuthorize;
++import org.springframework.web.bind.annotation.*;
++
++/** Public discovery: communities, units, account balances, credential status. */
++@RestController @RequestMapping("/api/ostris/communities")
++public class DiscoveryController {
++    private final DiscoveryService service;
++    public DiscoveryController(DiscoveryService service) { this.service = service; }
++    private UUID tenant() { return TenantContext.get().getTenantId(); }
++
++    @GetMapping @PreAuthorize("@permissionService.hasPermission('OSTRIS_DISCOVERY_READ')")
++    List<DiscoveryService.CommunityView> communities() { return service.communities(tenant()); }
++
++    @GetMapping("/{community}") @PreAuthorize("@permissionService.hasPermission('OSTRIS_DISCOVERY_READ')")
++    DiscoveryService.CommunityView community(@PathVariable UUID community) { return service.community(tenant(), community); }
++
++    @GetMapping("/{community}/units") @PreAuthorize("@permissionService.hasPermission('OSTRIS_DISCOVERY_READ')")
++    List<DiscoveryService.UnitView> units(@PathVariable UUID community) { return service.units(tenant(), community); }
++
++    @GetMapping("/{community}/units/{unit}") @PreAuthorize("@permissionService.hasPermission('OSTRIS_DISCOVERY_READ')")
++    DiscoveryService.UnitView unit(@PathVariable UUID community, @PathVariable UUID unit) { return service.unit(tenant(), community, unit); }
++
++    @GetMapping("/{community}/accounts/{account}") @PreAuthorize("@permissionService.hasPermission('OSTRIS_DISCOVERY_READ')")
++    DiscoveryService.AccountView account(@PathVariable UUID community, @PathVariable UUID account) { return service.account(tenant(), community, account); }
++
++    @GetMapping("/{community}/credentials/{credential}") @PreAuthorize("@permissionService.hasPermission('OSTRIS_DISCOVERY_READ')")
++    DiscoveryService.CredentialView credential(@PathVariable UUID community, @PathVariable UUID credential) { return service.credential(tenant(), community, credential); }
++
++    @GetMapping("/{community}/controllers/{controller}/credentials") @PreAuthorize("@permissionService.hasPermission('OSTRIS_DISCOVERY_READ')")
++    List<DiscoveryService.CredentialView> credentialsForController(@PathVariable UUID community, @PathVariable UUID controller) {
++        return service.credentialsForController(tenant(), community, controller);
++    }
++}
+diff --git a/backend/src/main/java/es/idynamicsax/ostris/api/ProvisioningController.java b/backend/src/main/java/es/idynamicsax/ostris/api/ProvisioningController.java
+new file mode 100644
+index 0000000..b194560
+--- /dev/null
++++ b/backend/src/main/java/es/idynamicsax/ostris/api/ProvisioningController.java
+@@ -0,0 +1,52 @@
++package es.idynamicsax.ostris.api;
++
++import es.idynamicsax.idax.tenant.TenantContext;
++import es.idynamicsax.ostris.service.ProvisioningService;
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.*;
++import java.math.BigInteger;
++import java.util.UUID;
++import org.springframework.http.HttpStatus;
++import org.springframework.http.ResponseEntity;
++import org.springframework.security.access.prepost.PreAuthorize;
++import org.springframework.web.bind.annotation.*;
++
++@RestController @RequestMapping("/api/ostris/communities")
++public class ProvisioningController {
++    private final ProvisioningService service;
++    public ProvisioningController(ProvisioningService service) { this.service = service; }
++    private UUID tenant() { return TenantContext.get().getTenantId(); }
++
++    @PostMapping @PreAuthorize("@permissionService.hasPermission('OSTRIS_COMMUNITY_MANAGE')")
++    ResponseEntity<ProvisioningService.CommunityCreated> createCommunity(@Valid @RequestBody CommunityRequest r) {
++        return ResponseEntity.status(HttpStatus.CREATED).body(service.createCommunity(tenant(), r.name()));
++    }
++
++    @PostMapping("/{community}/units") @PreAuthorize("@permissionService.hasPermission('OSTRIS_COMMUNITY_MANAGE')")
++    ResponseEntity<ProvisioningService.UnitCreated> createUnit(@PathVariable UUID community, @Valid @RequestBody UnitRequest r) {
++        return ResponseEntity.status(HttpStatus.CREATED).body(service.createUnit(tenant(), community, r.code(), r.scale()));
++    }
++
++    @PostMapping("/{community}/participants/activate") @PreAuthorize("@permissionService.hasPermission('OSTRIS_PARTICIPANT_ACTIVATE')")
++    ResponseEntity<ProvisioningService.ActivationResult> activate(@PathVariable UUID community, @Valid @RequestBody ActivateRequest r) {
++        return ResponseEntity.status(HttpStatus.CREATED).body(
++            service.activateParticipant(tenant(), community, r.displayName(), r.unitId(), r.publicKeyBase64url(), r.creditFloor()));
++    }
++
++    @PostMapping("/{community}/credentials") @PreAuthorize("@permissionService.hasPermission('OSTRIS_CREDENTIAL_MANAGE')")
++    ResponseEntity<ProvisioningService.CredentialAdded> addCredential(@PathVariable UUID community, @Valid @RequestBody AddCredentialRequest r) {
++        return ResponseEntity.status(HttpStatus.CREATED).body(service.addCredential(tenant(), community, r.controllerId(), r.publicKeyBase64url()));
++    }
++
++    @PostMapping("/{community}/credentials/{credential}/revoke") @PreAuthorize("@permissionService.hasPermission('OSTRIS_CREDENTIAL_MANAGE')")
++    ResponseEntity<Void> revokeCredential(@PathVariable UUID community, @PathVariable UUID credential) {
++        service.revokeCredential(tenant(), community, credential);
++        return ResponseEntity.noContent().build();
++    }
++
++    public record CommunityRequest(@NotBlank @Size(max = 160) String name) {}
++    public record UnitRequest(@NotBlank @Size(max = 16) String code, @NotNull @Min(0) @Max(18) Integer scale) {}
++    public record ActivateRequest(@NotBlank @Size(max = 160) String displayName, @NotNull UUID unitId,
++        @NotBlank String publicKeyBase64url, BigInteger creditFloor) {}
++    public record AddCredentialRequest(@NotNull UUID controllerId, @NotBlank String publicKeyBase64url) {}
++}
+diff --git a/backend/src/main/java/es/idynamicsax/ostris/api/TransactionController.java b/backend/src/main/java/es/idynamicsax/ostris/api/TransactionController.java
+index d43317e..4b62d92 100644
+--- a/backend/src/main/java/es/idynamicsax/ostris/api/TransactionController.java
++++ b/backend/src/main/java/es/idynamicsax/ostris/api/TransactionController.java
+@@ -1,8 +1,10 @@
+ package es.idynamicsax.ostris.api;
+ import es.idynamicsax.idax.tenant.TenantContext; import es.idynamicsax.ostris.core.TransactionPurpose; import es.idynamicsax.ostris.service.*; import jakarta.validation.Valid; import jakarta.validation.constraints.*; import java.util.*; import org.springframework.http.*; import org.springframework.security.access.prepost.PreAuthorize; import org.springframework.web.bind.annotation.*;
+ @RestController @RequestMapping("/api/ostris/transactions") public class TransactionController {
+- private final ProposalAuthorizationService service; public TransactionController(ProposalAuthorizationService s){service=s;}
++ private final ProposalAuthorizationService service; private final DiscoveryService discovery;
++ public TransactionController(ProposalAuthorizationService s,DiscoveryService discovery){service=s;this.discovery=discovery;}
+  @PostMapping("/proposals") @PreAuthorize("@permissionService.hasPermission('OSTRIS_TRANSACTION_CREATE')") ResponseEntity<ProposalAuthorizationService.ProposalView> propose(@Valid @RequestBody Request r){UUID tenant=TenantContext.get().getTenantId();var entries=r.entries().stream().map(e->new CommitTransactionCommand.Entry(e.accountId(),e.amount())).toList();return ResponseEntity.status(HttpStatus.CREATED).body(service.propose(new CommitTransactionCommand(tenant,r.communityId(),r.unitId(),r.transactionId(),r.purpose(),entries,r.references(),r.contractualMetadataDigest(),r.resolutionBasisType(),r.resolutionBasisId())));}
++ @GetMapping("/{id}") @PreAuthorize("@permissionService.hasPermission('OSTRIS_TRANSACTION_READ')") DiscoveryService.TransactionStatusView status(@PathVariable UUID id){return discovery.transaction(TenantContext.get().getTenantId(),id);}
+  @PostMapping("/{id}/authorizations") @PreAuthorize("@permissionService.hasPermission('OSTRIS_TRANSACTION_AUTHORIZE')") ResponseEntity<Void> authorize(@PathVariable UUID id,@Valid @RequestBody AccountAuthorization r){service.addAccountEvidence(TenantContext.get().getTenantId(),id,r.accountId(),r.credentialId(),r.signatureBase64url());return ResponseEntity.noContent().build();}
+  @PostMapping("/{id}/governance-authorizations") @PreAuthorize("@permissionService.hasPermission('OSTRIS_TRANSACTION_AUTHORIZE')") ResponseEntity<Void> govern(@PathVariable UUID id,@Valid @RequestBody GovernanceAuthorization r){service.addGovernanceEvidence(TenantContext.get().getTenantId(),id,r.authorityId(),r.authorityPolicyVersion(),r.resolutionBasisType(),r.resolutionBasisId(),r.coveredAccounts(),r.credentialId(),r.signatureBase64url());return ResponseEntity.noContent().build();}
+  @PostMapping("/{id}/commit") @PreAuthorize("@permissionService.hasPermission('OSTRIS_TRANSACTION_COMMIT')") ResponseEntity<CommitReceipt> commit(@PathVariable UUID id){return ResponseEntity.ok(service.commit(TenantContext.get().getTenantId(),id));}
+diff --git a/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java b/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java
+index d902410..be65850 100644
+--- a/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java
++++ b/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java
+@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
+ import org.springframework.context.annotation.Configuration;
+ 
+ @Configuration
++@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="idax.module.migrations.enabled", havingValue="true", matchIfMissing=true)
+ public class OstrisFlywayConfig {
+     @Bean
+     Flyway flywayOstris(DataSource dataSource) {
+diff --git a/backend/src/main/java/es/idynamicsax/ostris/core/OstrisWireCodec.java b/backend/src/main/java/es/idynamicsax/ostris/core/OstrisWireCodec.java
+index 968eb4f..17b9023 100644
+--- a/backend/src/main/java/es/idynamicsax/ostris/core/OstrisWireCodec.java
++++ b/backend/src/main/java/es/idynamicsax/ostris/core/OstrisWireCodec.java
+@@ -13,6 +13,7 @@ import org.erdtman.jcs.JsonCanonicalizer;
+ public final class OstrisWireCodec {
+     public static final String AUTHORIZATION_DOMAIN = "OSTRIS:TX:AUTH:V1";
+     public static final String GOVERNANCE_AUTHORIZATION_DOMAIN = "OSTRIS:TX:GOVAUTH:V1";
++    public static final String CANONICALIZATION_SCHEME = "OSTRIS-CORE-JCS-1";
+     private final ObjectMapper mapper = JsonMapper.builder()
+             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+diff --git a/backend/src/main/java/es/idynamicsax/ostris/service/DiscoveryService.java b/backend/src/main/java/es/idynamicsax/ostris/service/DiscoveryService.java
+new file mode 100644
+index 0000000..c1b3969
+--- /dev/null
++++ b/backend/src/main/java/es/idynamicsax/ostris/service/DiscoveryService.java
+@@ -0,0 +1,108 @@
++package es.idynamicsax.ostris.service;
++
++import es.idynamicsax.ostris.core.OstrisWireCodec;
++import es.idynamicsax.ostris.core.ProtocolException;
++import java.util.List;
++import java.util.UUID;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Minimal public read/discovery surface for external applications (e.g. STIR): communities,
++ * units of account, account balances and credential/control status, plus transaction
++ * status/receipt and the canonical bytes a client needs to produce an AccountAuthorization
++ * signature. Never exposes RiskSubject/IdentityAssurance/Finding internals or private keys.
++ */
++@Service
++public class DiscoveryService {
++    private final JdbcTemplate jdbc;
++
++    public DiscoveryService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
++
++    @Transactional(readOnly = true)
++    public List<CommunityView> communities(UUID tenant) {
++        return jdbc.query("select id,name,next_sequence from ostris.community where tenant_id=? order by name",
++            (rs, n) -> new CommunityView(rs.getObject(1, UUID.class), rs.getString(2), rs.getLong(3)), tenant);
++    }
++
++    @Transactional(readOnly = true)
++    public CommunityView community(UUID tenant, UUID community) {
++        return jdbc.query("select id,name,next_sequence from ostris.community where tenant_id=? and id=?",
++            (rs, n) -> new CommunityView(rs.getObject(1, UUID.class), rs.getString(2), rs.getLong(3)), tenant, community)
++            .stream().findFirst().orElseThrow(() -> new ProtocolException("UNKNOWN_COMMUNITY", "Community not found"));
++    }
++
++    @Transactional(readOnly = true)
++    public List<UnitView> units(UUID tenant, UUID community) {
++        return jdbc.query("select id,code,scale from ostris.unit_of_account where tenant_id=? and community_id=? order by code",
++            (rs, n) -> new UnitView(rs.getObject(1, UUID.class), rs.getString(2), rs.getInt(3)), tenant, community);
++    }
++
++    @Transactional(readOnly = true)
++    public UnitView unit(UUID tenant, UUID community, UUID unit) {
++        return jdbc.query("select id,code,scale from ostris.unit_of_account where tenant_id=? and community_id=? and id=?",
++            (rs, n) -> new UnitView(rs.getObject(1, UUID.class), rs.getString(2), rs.getInt(3)), tenant, community, unit)
++            .stream().findFirst().orElseThrow(() -> new ProtocolException("UNKNOWN_UNIT", "Unit not found"));
++    }
++
++    @Transactional(readOnly = true)
++    public AccountView account(UUID tenant, UUID community, UUID account) {
++        return jdbc.query("select id,unit_id,participant_id,account_type,name,credit_floor,balance_projection,risk_state"
++            + " from ostris.account where tenant_id=? and community_id=? and id=?",
++            (rs, n) -> new AccountView(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getObject(3, UUID.class),
++                rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8)),
++            tenant, community, account).stream().findFirst()
++            .orElseThrow(() -> new ProtocolException("UNKNOWN_ACCOUNT", "Account not found"));
++    }
++
++    @Transactional(readOnly = true)
++    public CredentialView credential(UUID tenant, UUID community, UUID credential) {
++        return jdbc.query("select c.id,c.public_key_base64url,c.algorithm,c.activation_sequence,c.revocation_sequence,b.controller_id"
++            + " from ostris.credential c left join ostris.controller_credential_binding b on b.credential_id=c.id and b.tenant_id=c.tenant_id"
++            + " where c.tenant_id=? and c.community_id=? and c.id=?",
++            (rs, n) -> new CredentialView(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),
++                rs.getLong(4), (Long) rs.getObject(5), (UUID) rs.getObject(6, UUID.class)),
++            tenant, community, credential).stream().findFirst()
++            .orElseThrow(() -> new ProtocolException("UNKNOWN_CREDENTIAL", "Credential not found"));
++    }
++
++    @Transactional(readOnly = true)
++    public List<CredentialView> credentialsForController(UUID tenant, UUID community, UUID controller) {
++        return jdbc.query("select c.id,c.public_key_base64url,c.algorithm,c.activation_sequence,c.revocation_sequence,b.controller_id"
++            + " from ostris.credential c join ostris.controller_credential_binding b on b.credential_id=c.id and b.tenant_id=c.tenant_id"
++            + " where c.tenant_id=? and c.community_id=? and b.controller_id=? order by c.activation_sequence",
++            (rs, n) -> new CredentialView(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3),
++                rs.getLong(4), (Long) rs.getObject(5), (UUID) rs.getObject(6, UUID.class)),
++            tenant, community, controller);
++    }
++
++    @Transactional(readOnly = true)
++    public TransactionStatusView transaction(UUID tenant, UUID id) {
++        var row = jdbc.query("select id,community_id,unit_id,purpose,authorization_payload,authorization_digest,status,committed_sequence"
++            + " from ostris.transaction_proposal where tenant_id=? and id=?",
++            (rs, n) -> new Object[]{rs.getObject(1, UUID.class), rs.getObject(2, UUID.class), rs.getObject(3, UUID.class),
++                rs.getString(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getObject(8)},
++            tenant, id).stream().findFirst().orElseThrow(() -> new ProtocolException("UNKNOWN_PROPOSAL", "Proposal not found"));
++        List<UUID> authorized = jdbc.queryForList(
++            "select account_id from ostris.authorization_evidence where tenant_id=? and proposal_id=? order by created_at",
++            UUID.class, tenant, id);
++        var journal = jdbc.query("select protocol_digest,committed_at from ostris.journal_transaction where tenant_id=? and id=?",
++            (rs, n) -> new Object[]{rs.getString(1), rs.getTimestamp(2).toInstant()}, tenant, id).stream().findFirst();
++        String protocolDigest = journal.map(j -> (String) j[0]).orElse(null);
++        java.time.Instant committedAt = journal.map(j -> (java.time.Instant) j[1]).orElse(null);
++        return new TransactionStatusView((UUID) row[0], (UUID) row[1], (UUID) row[2], (String) row[3],
++            OstrisWireCodec.CANONICALIZATION_SCHEME, "0.1", (String) row[4], (String) row[5],
++            (String) row[6], (Long) row[7], protocolDigest, committedAt, authorized);
++    }
++
++    public record CommunityView(UUID communityId, String name, long nextSequence) {}
++    public record UnitView(UUID unitId, String code, int scale) {}
++    public record AccountView(UUID accountId, UUID unitId, UUID participantId, String accountType, String name,
++        String creditFloor, String balanceProjection, String riskState) {}
++    public record CredentialView(UUID credentialId, String publicKeyBase64url, String algorithm,
++        long activationSequence, Long revocationSequence, UUID controllerId) {}
++    public record TransactionStatusView(UUID transactionId, UUID communityId, UUID unitId, String purpose,
++        String wireFormat, String ostrisCoreVersion, String authorizationPayload, String authorizationDigest,
++        String status, Long committedSequence, String protocolDigest, java.time.Instant committedAt, List<UUID> authorizedAccountIds) {}
++}
+diff --git a/backend/src/main/java/es/idynamicsax/ostris/service/ProvisioningService.java b/backend/src/main/java/es/idynamicsax/ostris/service/ProvisioningService.java
+new file mode 100644
+index 0000000..7e5de36
+--- /dev/null
++++ b/backend/src/main/java/es/idynamicsax/ostris/service/ProvisioningService.java
+@@ -0,0 +1,172 @@
++package es.idynamicsax.ostris.service;
++
++import es.idynamicsax.ostris.core.ProtocolException;
++import es.idynamicsax.ostris.core.UuidV7;
++import java.math.BigInteger;
++import java.util.UUID;
++import java.util.regex.Pattern;
++import org.springframework.dao.DataIntegrityViolationException;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++
++/**
++ * Minimal public provisioning for an external application's economic setup: a Community/Unit
++ * (rare, tenant-level) and a Participant+Account+Credential+Controller+1-of-1 AccountControlPolicy
++ * for one caller (routine, per user). Every object this creates already exists as a normative
++ * osTRIS concept (see V1__ostris_core.sql / CORE_WIRE_AND_DECISION_SEMANTICS_V0_1.md); this
++ * service only exposes their creation, using UuidV7 identifiers and activation_sequence=0 (active
++ * before any transaction commits), exactly as the existing test fixtures already do by hand.
++ * addCredential/revokeCredential support the device-lifecycle case (add/revoke one credential for
++ * an already-active controller, e.g. "authorize this new browser"); RiskSubject/IdentityAssurance
++ * and governed multi-controller policies remain intentionally out of scope here - a caller needing
++ * those provisions them directly against the normative tables/future richer endpoints, not through
++ * this MVP convenience surface.
++ */
++@Service
++public class ProvisioningService {
++    private static final Pattern UNIT_CODE = Pattern.compile("^[A-Z][A-Z0-9_-]{0,15}$");
++    private static final Pattern PUBLIC_KEY = Pattern.compile("^[A-Za-z0-9_-]{43}$");
++    private final JdbcTemplate jdbc;
++
++    public ProvisioningService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
++
++    @Transactional
++    public CommunityCreated createCommunity(UUID tenant, String name) {
++        if (name == null || name.isBlank()) throw new ProtocolException("INVALID_REQUEST", "Community name is required");
++        UUID id = UuidV7.generate();
++        jdbc.update("insert into ostris.community(id,tenant_id,name) values(?,?,?)", id, tenant, name.trim());
++        return new CommunityCreated(id);
++    }
++
++    @Transactional
++    public UnitCreated createUnit(UUID tenant, UUID community, String code, int scale) {
++        requireCommunity(tenant, community);
++        if (code == null || !UNIT_CODE.matcher(code).matches()) throw new ProtocolException("INVALID_UNIT_CODE", "Unit code must match [A-Z][A-Z0-9_-]{0,15}");
++        if (scale < 0 || scale > 18) throw new ProtocolException("INVALID_UNIT_SCALE", "Unit scale must be 0..18");
++        UUID id = UuidV7.generate();
++        try {
++            jdbc.update("insert into ostris.unit_of_account(id,tenant_id,community_id,code,scale) values(?,?,?,?,?)", id, tenant, community, code, scale);
++        } catch (DataIntegrityViolationException ex) {
++            throw new ProtocolException("UNIT_CODE_TAKEN", "Unit code already exists in this community");
++        }
++        return new UnitCreated(id, code, scale);
++    }
++
++    /**
++     * Activates one participant for economic exchange: Participant + Account (given unit) +
++     * Credential (the caller-supplied Ed25519 public key, already generated and held client-side -
++     * this service never sees or generates a private key) + Controller + the binding between them
++     * + a 1-of-1 AccountControlPolicy naming that controller as the account's sole authorizer.
++     */
++    @Transactional
++    public ActivationResult activateParticipant(UUID tenant, UUID community, String displayName, UUID unit,
++            String publicKeyBase64url, BigInteger creditFloor) {
++        requireCommunity(tenant, community);
++        requireUnit(tenant, community, unit);
++        if (displayName == null || displayName.isBlank()) throw new ProtocolException("INVALID_REQUEST", "Display name is required");
++        if (publicKeyBase64url == null || !PUBLIC_KEY.matcher(publicKeyBase64url).matches())
++            throw new ProtocolException("INVALID_BASE64URL", "Public key must be a canonical 32-byte base64url value");
++        BigInteger floor = creditFloor == null ? new BigInteger("-100000") : creditFloor;
++        if (floor.signum() > 0) throw new ProtocolException("INVALID_CREDIT_FLOOR", "Credit floor must be zero or negative");
++
++        UUID participant = UuidV7.generate();
++        jdbc.update("insert into ostris.participant(id,tenant_id,community_id,display_name) values(?,?,?,?)",
++            participant, tenant, community, displayName.trim());
++
++        UUID account = UuidV7.generate();
++        jdbc.update("insert into ostris.account(id,tenant_id,community_id,unit_id,participant_id,account_type,name,credit_floor)"
++            + " values(?,?,?,?,?,'INDIVIDUAL',?,?)", account, tenant, community, unit, participant, displayName.trim(), floor);
++
++        UUID credential = UuidV7.generate();
++        try {
++            jdbc.update("insert into ostris.credential(id,tenant_id,community_id,public_key_base64url,algorithm,activation_sequence)"
++                + " values(?,?,?,?,'Ed25519',0)", credential, tenant, community, publicKeyBase64url);
++        } catch (DataIntegrityViolationException ex) {
++            throw new ProtocolException("CREDENTIAL_KEY_TAKEN", "This public key is already registered in this community");
++        }
++
++        UUID controller = UuidV7.generate();
++        jdbc.update("insert into ostris.protocol_controller(id,tenant_id,community_id,activation_sequence) values(?,?,?,0)", controller, tenant, community);
++        jdbc.update("insert into ostris.controller_credential_binding(credential_id,tenant_id,community_id,controller_id,public_key_base64url,activation_sequence)"
++            + " values(?,?,?,?,?,0)", credential, tenant, community, controller, publicKeyBase64url);
++
++        UUID policy = UuidV7.generate();
++        jdbc.update("insert into ostris.account_control_policy(id,tenant_id,community_id,account_id,policy_version,threshold,activation_sequence)"
++            + " values(?,?,?,?,1,1,0)", policy, tenant, community, account);
++        jdbc.update("insert into ostris.account_controller(tenant_id,control_policy_id,controller_id) values(?,?,?)", tenant, policy, controller);
++
++        return new ActivationResult(participant, account, controller, credential, unit, floor.toString(), "0");
++    }
++
++    /**
++     * Binds an ADDITIONAL credential to an ALREADY-ACTIVE controller (device lifecycle: "add this
++     * browser/device as a signer"). Never creates a new controller or touches AccountControlPolicy -
++     * multiple active credentials for one controller already count once at threshold evaluation
++     * (CORE_WIRE_AND_DECISION_SEMANTICS_V0_1.md s.103), so this is enough for N devices to satisfy
++     * an existing 1-of-1 (or any) policy without loosening it. activation_sequence is set to
++     * (community's current next_sequence - 1) - the same "already active" convention genesis
++     * credentials use with activation_sequence=0 (next_sequence starts at 1) - so the device is
++     * eligible starting with the VERY NEXT commit, not one cycle later: eligibility requires
++     * activation_sequence < S for the commit's own sequence S, and S == next_sequence at the moment
++     * that commit is evaluated, so activation_sequence must be strictly below the CURRENT
++     * next_sequence, not equal to it.
++     */
++    @Transactional
++    public CredentialAdded addCredential(UUID tenant, UUID community, UUID controller, String publicKeyBase64url) {
++        requireCommunity(tenant, community);
++        requireActiveController(tenant, community, controller);
++        if (publicKeyBase64url == null || !PUBLIC_KEY.matcher(publicKeyBase64url).matches())
++            throw new ProtocolException("INVALID_BASE64URL", "Public key must be a canonical 32-byte base64url value");
++        long sequence = currentSequence(tenant, community) - 1;
++        UUID credential = UuidV7.generate();
++        try {
++            jdbc.update("insert into ostris.credential(id,tenant_id,community_id,public_key_base64url,algorithm,activation_sequence)"
++                + " values(?,?,?,?,'Ed25519',?)", credential, tenant, community, publicKeyBase64url, sequence);
++        } catch (DataIntegrityViolationException ex) {
++            throw new ProtocolException("CREDENTIAL_KEY_TAKEN", "This public key is already registered in this community");
++        }
++        jdbc.update("insert into ostris.controller_credential_binding(credential_id,tenant_id,community_id,controller_id,public_key_base64url,activation_sequence)"
++            + " values(?,?,?,?,?,?)", credential, tenant, community, controller, publicKeyBase64url, sequence);
++        return new CredentialAdded(credential, controller, sequence);
++    }
++
++    /** Revokes one credential (never the controller itself - other credentials/devices keep working). */
++    @Transactional
++    public void revokeCredential(UUID tenant, UUID community, UUID credential) {
++        requireCommunity(tenant, community);
++        long sequence = currentSequence(tenant, community);
++        int updated = jdbc.update("update ostris.credential set revocation_sequence=? where id=? and tenant_id=? and community_id=? and revocation_sequence is null",
++            sequence, credential, tenant, community);
++        if (updated == 0) {
++            Integer exists = jdbc.queryForObject("select count(*) from ostris.credential where id=? and tenant_id=? and community_id=?", Integer.class, credential, tenant, community);
++            if (exists == null || exists == 0) throw new ProtocolException("UNKNOWN_CREDENTIAL", "Credential not found");
++            throw new ProtocolException("CREDENTIAL_ALREADY_REVOKED", "Credential is already revoked");
++        }
++    }
++
++    private void requireCommunity(UUID tenant, UUID community) {
++        Integer count = jdbc.queryForObject("select count(*) from ostris.community where tenant_id=? and id=?", Integer.class, tenant, community);
++        if (count == null || count != 1) throw new ProtocolException("UNKNOWN_COMMUNITY", "Community not found");
++    }
++    private void requireUnit(UUID tenant, UUID community, UUID unit) {
++        Integer count = jdbc.queryForObject("select count(*) from ostris.unit_of_account where tenant_id=? and community_id=? and id=?", Integer.class, tenant, community, unit);
++        if (count == null || count != 1) throw new ProtocolException("UNKNOWN_UNIT", "Unit not found in this community");
++    }
++    private void requireActiveController(UUID tenant, UUID community, UUID controller) {
++        Integer count = jdbc.queryForObject("select count(*) from ostris.protocol_controller where tenant_id=? and community_id=? and id=? and revocation_sequence is null",
++            Integer.class, tenant, community, controller);
++        if (count == null || count != 1) throw new ProtocolException("UNKNOWN_CONTROLLER", "Controller not found or already revoked");
++    }
++    private long currentSequence(UUID tenant, UUID community) {
++        Long sequence = jdbc.queryForObject("select next_sequence from ostris.community where tenant_id=? and id=?", Long.class, tenant, community);
++        if (sequence == null) throw new ProtocolException("UNKNOWN_COMMUNITY", "Community not found");
++        return sequence;
++    }
++
++    public record CommunityCreated(UUID communityId) {}
++    public record UnitCreated(UUID unitId, String code, int scale) {}
++    public record ActivationResult(UUID participantId, UUID accountId, UUID controllerId, UUID credentialId,
++        UUID unitId, String creditFloor, String balanceProjection) {}
++    public record CredentialAdded(UUID credentialId, UUID controllerId, long activationSequence) {}
++}
+diff --git a/backend/src/main/resources/generated/ostris/permission-catalog.generated.json b/backend/src/main/resources/generated/ostris/permission-catalog.generated.json
+index 8dce7fe..871d618 100644
+--- a/backend/src/main/resources/generated/ostris/permission-catalog.generated.json
++++ b/backend/src/main/resources/generated/ostris/permission-catalog.generated.json
+@@ -1,6 +1,33 @@
+ {
+   "moduleKey": "ostris",
+   "permissions": [
++    {
++      "actionKey": "manage",
++      "apiPath": "/api/ostris/communities",
++      "code": "OSTRIS_COMMUNITY_MANAGE",
++      "description": "Create communities and units of account through the application API.",
++      "fieldKey": null,
++      "labelKey": "ostris.permissions.community.manage",
++      "resourceKey": "ostris.community"
++    },
++    {
++      "actionKey": "manage",
++      "apiPath": "/api/ostris/communities/*/credentials/**",
++      "code": "OSTRIS_CREDENTIAL_MANAGE",
++      "description": "Add or revoke a credential for an already-active controller through the application API (device lifecycle).",
++      "fieldKey": null,
++      "labelKey": "ostris.permissions.credential.manage",
++      "resourceKey": "ostris.credential"
++    },
++    {
++      "actionKey": "read",
++      "apiPath": "/api/ostris/communities/**",
++      "code": "OSTRIS_DISCOVERY_READ",
++      "description": "Read public community, unit, account balance and credential information through the application API.",
++      "fieldKey": null,
++      "labelKey": "ostris.permissions.discovery.read",
++      "resourceKey": "ostris.discovery"
++    },
+     {
+       "actionKey": "manage",
+       "apiPath": "/api/ostris/identity/continuity-decisions",
+@@ -19,6 +46,15 @@
+       "labelKey": "ostris.permissions.identity-continuity.read-private",
+       "resourceKey": "ostris.identity-continuity"
+     },
++    {
++      "actionKey": "activate",
++      "apiPath": "/api/ostris/communities/*/participants/activate",
++      "code": "OSTRIS_PARTICIPANT_ACTIVATE",
++      "description": "Provision a participant, account, credential and 1-of-1 account control policy for the caller through the application API.",
++      "fieldKey": null,
++      "labelKey": "ostris.permissions.participant.activate",
++      "resourceKey": "ostris.participant"
++    },
+     {
+       "actionKey": "read",
+       "apiPath": "/api/ostris/participants/*/*",
+@@ -54,6 +90,15 @@
+       "fieldKey": null,
+       "labelKey": "ostris.permissions.transaction.create",
+       "resourceKey": "ostris.transaction"
++    },
++    {
++      "actionKey": "read",
++      "apiPath": "/api/ostris/transactions/*",
++      "code": "OSTRIS_TRANSACTION_READ",
++      "description": "Read transaction proposal/commit status, the canonical authorization payload to sign, and authorized-account progress.",
++      "fieldKey": null,
++      "labelKey": "ostris.permissions.transaction.read",
++      "resourceKey": "ostris.transaction"
+     }
+   ],
+   "schemaVersion": 1,
+diff --git a/backend/src/test/java/es/idynamicsax/ostris/OstrisPermissionCatalogPostgresTest.java b/backend/src/test/java/es/idynamicsax/ostris/OstrisPermissionCatalogPostgresTest.java
+index 030cce7..ced4604 100644
+--- a/backend/src/test/java/es/idynamicsax/ostris/OstrisPermissionCatalogPostgresTest.java
++++ b/backend/src/test/java/es/idynamicsax/ostris/OstrisPermissionCatalogPostgresTest.java
+@@ -42,12 +42,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
+ class OstrisPermissionCatalogPostgresTest {
+     private static final String CATALOG = "generated/ostris/permission-catalog.generated.json";
+     private static final List<String> CANONICAL_CODES = List.of(
++            "OSTRIS_COMMUNITY_MANAGE",
++            "OSTRIS_CREDENTIAL_MANAGE",
++            "OSTRIS_DISCOVERY_READ",
+             "OSTRIS_IDENTITY_CONTINUITY_MANAGE",
+             "OSTRIS_IDENTITY_CONTINUITY_READ_PRIVATE",
++            "OSTRIS_PARTICIPANT_ACTIVATE",
+             "OSTRIS_READ",
+             "OSTRIS_TRANSACTION_AUTHORIZE",
+             "OSTRIS_TRANSACTION_COMMIT",
+-            "OSTRIS_TRANSACTION_CREATE");
++            "OSTRIS_TRANSACTION_CREATE",
++            "OSTRIS_TRANSACTION_READ");
+     private static final UUID TENANT_A = UUID.fromString("00000000-0000-0000-0000-00000000000a");
+     private static final UUID TENANT_B = UUID.fromString("00000000-0000-0000-0000-00000000000b");
+     private static final UUID USER = UUID.fromString("018f6f9a-7b1c-7a2b-8c3d-4e5f60719341");
+@@ -142,9 +147,9 @@ class OstrisPermissionCatalogPostgresTest {
+         var result = registrar.register("ostris", bytes);
+         assertEquals(0, result.created());
+         assertEquals(0, result.updated());
+-        assertEquals(6, result.unchanged());
++        assertEquals(CANONICAL_CODES.size(), result.unchanged());
+         assertEquals(0, result.stale());
+-        assertEquals(6, jdbc.queryForObject(
++        assertEquals(CANONICAL_CODES.size(), jdbc.queryForObject(
+                 "SELECT count(*) FROM idax_core.idax_permission WHERE module_key = 'ostris'", Integer.class));
+         assertEquals(0, jdbc.queryForObject("""
+                 SELECT count(*) FROM (
+diff --git a/backend/src/test/java/es/idynamicsax/ostris/api/HttpSecurityPostgresTest.java b/backend/src/test/java/es/idynamicsax/ostris/api/HttpSecurityPostgresTest.java
+index c2f7763..9485b31 100644
+--- a/backend/src/test/java/es/idynamicsax/ostris/api/HttpSecurityPostgresTest.java
++++ b/backend/src/test/java/es/idynamicsax/ostris/api/HttpSecurityPostgresTest.java
+@@ -112,7 +112,7 @@ class HttpSecurityPostgresTest {
+         jdbc.execute("grant execute on function idax_core.set_tenant(uuid) to idax_app,idax_admin");
+         jdbc.execute("grant select,insert,update on idax_core.app_user to idax_admin");
+         jdbc.execute("grant select on idax_core.tenant_user,idax_core.idax_user_role,idax_core.idax_role,idax_core.idax_role_permission,idax_core.idax_permission to idax_app");
+-        jdbc.update("insert into idax_core.tenant(tenant_id,code) values(?,?),(?,?)", TENANT_A, "A", TENANT_B, "B");
++        jdbc.update("insert into idax_core.tenant(tenant_id,code) values(?,?),(?,?) on conflict (tenant_id) do nothing", TENANT_A, "A", TENANT_B, "B");
+         jdbc.update("insert into idax_core.app_user(user_id,external_subject,is_superuser) values(?,?,false)", USER, "phase7c-human");
+         jdbc.update("insert into idax_core.tenant_user(tenant_id,user_id,role) values(?,?,?)", TENANT_A, USER, "user");
+         jdbc.update("insert into idax_core.idax_role(role_id,tenant_id,role_key,name) values(?,?,?,?)", ROLE_A, TENANT_A, "ostris-reader", "osTRIS reader");
+@@ -120,7 +120,7 @@ class HttpSecurityPostgresTest {
+         jdbc.update("insert into idax_core.idax_role_permission(role_id,permission_code) values(?,?)", ROLE_A, "OSTRIS_READ");
+         jdbc.update("insert into ostris.community(id,tenant_id,name) values(?,?,?),(?,?,?)", COMMUNITY_A, TENANT_A, "A", COMMUNITY_B, TENANT_B, "B");
+         jdbc.update("insert into ostris.participant(id,tenant_id,community_id,display_name) values(?,?,?,?),(?,?,?,?)", PARTICIPANT_A, TENANT_A, COMMUNITY_A, "Public A", PARTICIPANT_B, TENANT_B, COMMUNITY_B, "Private B");
+-        assertEquals(6, jdbc.queryForObject("select count(*) from idax_core.idax_permission where module_key='ostris' and source_type='IDAX_MODULE'", Integer.class));
++        assertEquals(11, jdbc.queryForObject("select count(*) from idax_core.idax_permission where module_key='ostris' and source_type='IDAX_MODULE'", Integer.class));
+         initialized = true;
+     }
+ 
+diff --git a/backend/src/test/java/es/idynamicsax/ostris/service/ProvisioningAndDiscoveryPostgresTest.java b/backend/src/test/java/es/idynamicsax/ostris/service/ProvisioningAndDiscoveryPostgresTest.java
+new file mode 100644
+index 0000000..32cd98e
+--- /dev/null
++++ b/backend/src/test/java/es/idynamicsax/ostris/service/ProvisioningAndDiscoveryPostgresTest.java
+@@ -0,0 +1,275 @@
++package es.idynamicsax.ostris.service;
++
++import static org.junit.jupiter.api.Assertions.*;
++
++import es.idynamicsax.ostris.config.OstrisFlywayConfig;
++import es.idynamicsax.ostris.core.*;
++import java.math.BigInteger;
++import java.security.*;
++import java.util.*;
++import org.junit.jupiter.api.*;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.*;
++import org.springframework.boot.autoconfigure.*;
++import org.springframework.boot.autoconfigure.domain.EntityScan;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.context.annotation.*;
++import org.springframework.dao.DataAccessException;
++import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
++import org.springframework.jdbc.core.JdbcTemplate;
++import org.springframework.test.context.DynamicPropertySource;
++import org.testcontainers.containers.PostgreSQLContainer;
++import org.testcontainers.junit.jupiter.*;
++
++/**
++ * Proves the new public provisioning/discovery surface end to end: an external application (like
++ * STIR) can create a Community/Unit, activate two participants (each generating their OWN Ed25519
++ * keypair - this test simulates the client, never osTRIS holding a private key), discover the
++ * resulting account/credential/balance state, propose+sign+commit a real EXCHANGE using exactly
++ * those activated credentials, and read the transaction status/receipt back. Also proves discovery
++ * fails closed on unknown IDs and provisioning fails closed on bad input/conflicts/credit floor.
++ */
++@Testcontainers(disabledWithoutDocker = true)
++@SpringBootTest(classes = ProvisioningAndDiscoveryPostgresTest.TestApp.class, webEnvironment = SpringBootTest.WebEnvironment.NONE)
++@org.springframework.transaction.annotation.Transactional
++class ProvisioningAndDiscoveryPostgresTest {
++    @SpringBootConfiguration @EnableAutoConfiguration @EntityScan("es.idynamicsax.ostris.persistence") @EnableJpaRepositories("es.idynamicsax.ostris.persistence")
++    @Import({OstrisFlywayConfig.class, ProvisioningService.class, DiscoveryService.class, ProposalAuthorizationService.class, JournalCommitService.class, OutboxProtocolEventProofService.class})
++    static class TestApp { @Bean com.fasterxml.jackson.databind.ObjectMapper objectMapper() { return new com.fasterxml.jackson.databind.ObjectMapper(); } }
++
++    @Container static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:17").withDatabaseName("ostris").withUsername("postgres").withPassword("test").withInitScript("postgres-init.sql");
++    @DynamicPropertySource static void properties(org.springframework.test.context.DynamicPropertyRegistry r) {
++        r.add("spring.datasource.url", POSTGRES::getJdbcUrl); r.add("spring.datasource.username", POSTGRES::getUsername); r.add("spring.datasource.password", POSTGRES::getPassword);
++        r.add("spring.jpa.hibernate.ddl-auto", () -> "none"); r.add("spring.flyway.enabled", () -> "false");
++    }
++
++    @Autowired ProvisioningService provisioning;
++    @Autowired DiscoveryService discovery;
++    @Autowired ProposalAuthorizationService transactions;
++    @Autowired JdbcTemplate jdbc;
++    @jakarta.persistence.PersistenceContext jakarta.persistence.EntityManager entityManager;
++    static final UUID TENANT = UUID.randomUUID();
++
++    @BeforeEach void tenant() { jdbc.update("insert into idax_core.tenant values(?) on conflict do nothing", TENANT); }
++
++    record Party(UUID participantId, UUID accountId, UUID controllerId, UUID credentialId, KeyPair key) {}
++
++    Party activate(UUID community, UUID unit, String name, BigInteger creditFloor) throws Exception {
++        KeyPair key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
++        var result = provisioning.activateParticipant(TENANT, community, name, unit, rawPublic(key), creditFloor);
++        return new Party(result.participantId(), result.accountId(), result.controllerId(), result.credentialId(), key);
++    }
++
++    @Test void communityUnitAndParticipantActivationProvisionAWorkingSignableAccount() throws Exception {
++        var community = provisioning.createCommunity(TENANT, "Test Community");
++        var unit = provisioning.createUnit(TENANT, community.communityId(), "TST", 2);
++        assertEquals("TST", unit.code());
++
++        Party ana = activate(community.communityId(), unit.unitId(), "Ana", null);
++        Party pedro = activate(community.communityId(), unit.unitId(), "Pedro", null);
++        assertNotEquals(ana.accountId(), pedro.accountId());
++
++        var foundCommunity = discovery.community(TENANT, community.communityId());
++        assertEquals("Test Community", foundCommunity.name());
++        var foundUnit = discovery.unit(TENANT, community.communityId(), unit.unitId());
++        assertEquals(2, foundUnit.scale());
++        var anaAccount = discovery.account(TENANT, community.communityId(), ana.accountId());
++        assertEquals("0", anaAccount.balanceProjection());
++        assertEquals("-100000", anaAccount.creditFloor());
++        var anaCredential = discovery.credential(TENANT, community.communityId(), ana.credentialId());
++        assertEquals(ana.controllerId(), anaCredential.controllerId());
++        assertEquals("Ed25519", anaCredential.algorithm());
++
++        UUID tx = UUID.randomUUID();
++        transactions.propose(new CommitTransactionCommand(TENANT, community.communityId(), unit.unitId(), tx, TransactionPurpose.EXCHANGE,
++            List.of(new CommitTransactionCommand.Entry(pedro.accountId(), "-900"), new CommitTransactionCommand.Entry(ana.accountId(), "900")), Map.of(), null));
++
++        var beforeCommit = discovery.transaction(TENANT, tx);
++        assertEquals("PROPOSED", beforeCommit.status());
++        assertNotNull(beforeCommit.authorizationPayload());
++        assertTrue(beforeCommit.authorizedAccountIds().isEmpty());
++
++        OstrisWireCodec wire = new OstrisWireCodec();
++        byte[] message = wire.authorizationMessage(wire.parse(beforeCommit.authorizationPayload()));
++        transactions.addAccountEvidence(TENANT, tx, pedro.accountId(), pedro.credentialId(), sign(message, pedro.key()));
++
++        var afterOneSignature = discovery.transaction(TENANT, tx);
++        assertEquals(1, afterOneSignature.authorizedAccountIds().size());
++
++        transactions.addAccountEvidence(TENANT, tx, ana.accountId(), ana.credentialId(), sign(message, ana.key()));
++
++        CommitReceipt receipt = transactions.commit(TENANT, tx);
++        assertEquals(1L, receipt.communitySequence());
++        // commit() mutates AccountEntity through JPA (dirty checking); flush so the raw-JDBC
++        // discovery reads below - sharing this same test transaction/connection - see it. A real
++        // deployment never needs this: commit and any later discovery read are separate requests
++        // and therefore separate, already-flushed-on-commit database transactions.
++        entityManager.flush();
++
++        var committed = discovery.transaction(TENANT, tx);
++        assertEquals("COMMITTED", committed.status());
++        assertEquals(receipt.protocolDigest(), committed.protocolDigest());
++        assertEquals(1L, committed.committedSequence());
++
++        assertEquals("900", discovery.account(TENANT, community.communityId(), ana.accountId()).balanceProjection());
++        assertEquals("-900", discovery.account(TENANT, community.communityId(), pedro.accountId()).balanceProjection());
++    }
++
++    @Test void exchangeBeyondCreditFloorFailsClosedAndLeavesBalanceUnchanged() throws Exception {
++        var community = provisioning.createCommunity(TENANT, "Floor Community");
++        var unit = provisioning.createUnit(TENANT, community.communityId(), "FLR", 2);
++        Party ana = activate(community.communityId(), unit.unitId(), "Ana", new BigInteger("-500"));
++        Party pedro = activate(community.communityId(), unit.unitId(), "Pedro", new BigInteger("-500"));
++
++        UUID tx = UUID.randomUUID();
++        transactions.propose(new CommitTransactionCommand(TENANT, community.communityId(), unit.unitId(), tx, TransactionPurpose.EXCHANGE,
++            List.of(new CommitTransactionCommand.Entry(pedro.accountId(), "-900"), new CommitTransactionCommand.Entry(ana.accountId(), "900")), Map.of(), null));
++        var status = discovery.transaction(TENANT, tx);
++        OstrisWireCodec wire = new OstrisWireCodec();
++        byte[] message = wire.authorizationMessage(wire.parse(status.authorizationPayload()));
++        transactions.addAccountEvidence(TENANT, tx, pedro.accountId(), pedro.credentialId(), sign(message, pedro.key()));
++        transactions.addAccountEvidence(TENANT, tx, ana.accountId(), ana.credentialId(), sign(message, ana.key()));
++
++        ProtocolException error = assertThrows(ProtocolException.class, () -> transactions.commit(TENANT, tx));
++        assertTrue(error.code().contains("FLOOR") || error.code().contains("RISK"), error.code());
++
++        // osTRIS never persists a REJECTED proposal status: a failed commit() throws synchronously
++        // and the proposal simply stays PROPOSED forever. The caller (STIR) learns rejection from
++        // the thrown exception at commit time, not by polling for a status value that never appears.
++        assertEquals("PROPOSED", discovery.transaction(TENANT, tx).status());
++        assertEquals("0", discovery.account(TENANT, community.communityId(), ana.accountId()).balanceProjection());
++        assertEquals("0", discovery.account(TENANT, community.communityId(), pedro.accountId()).balanceProjection());
++        assertEquals(0, jdbc.queryForObject("select count(*) from ostris.journal_transaction where id=?", Integer.class, tx));
++    }
++
++    @Test void discoveryFailsClosedOnUnknownIds() {
++        assertThrows(ProtocolException.class, () -> discovery.community(TENANT, UUID.randomUUID()));
++        assertThrows(ProtocolException.class, () -> discovery.unit(TENANT, UUID.randomUUID(), UUID.randomUUID()));
++        assertThrows(ProtocolException.class, () -> discovery.account(TENANT, UUID.randomUUID(), UUID.randomUUID()));
++        assertThrows(ProtocolException.class, () -> discovery.credential(TENANT, UUID.randomUUID(), UUID.randomUUID()));
++        assertThrows(ProtocolException.class, () -> discovery.transaction(TENANT, UUID.randomUUID()));
++    }
++
++    @Test void discoveryIsTenantScoped() {
++        var community = provisioning.createCommunity(TENANT, "Scoped");
++        UUID otherTenant = UUID.randomUUID();
++        jdbc.update("insert into idax_core.tenant values(?) on conflict do nothing", otherTenant);
++        assertThrows(ProtocolException.class, () -> discovery.community(otherTenant, community.communityId()));
++        assertTrue(discovery.communities(otherTenant).stream().noneMatch(c -> c.communityId().equals(community.communityId())));
++    }
++
++    @Test void provisioningRejectsUnknownCommunityOrUnitAndDuplicateUnitCodeOrCredentialKey() throws Exception {
++        assertThrows(ProtocolException.class, () -> provisioning.createUnit(TENANT, UUID.randomUUID(), "XX", 2));
++        var community = provisioning.createCommunity(TENANT, "Dup");
++        var unit = provisioning.createUnit(TENANT, community.communityId(), "DUP", 2);
++        // Postgres aborts the whole (shared, class-level @Transactional) transaction on a real
++        // constraint violation, not just the failing statement - savepoint/rollback around it,
++        // exactly like TransactionalAuthorizationPostgresTest.assertConstraintViolation does.
++        assertProtocolExceptionAfterConstraintViolation(() -> provisioning.createUnit(TENANT, community.communityId(), "DUP", 4));
++        assertThrows(ProtocolException.class, () -> provisioning.activateParticipant(TENANT, UUID.randomUUID(), "X", unit.unitId(), rawPublic(KeyPairGenerator.getInstance("Ed25519").generateKeyPair()), null));
++        assertThrows(ProtocolException.class, () -> provisioning.activateParticipant(TENANT, community.communityId(), "X", UUID.randomUUID(), rawPublic(KeyPairGenerator.getInstance("Ed25519").generateKeyPair()), null));
++
++        KeyPair key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
++        provisioning.activateParticipant(TENANT, community.communityId(), "First", unit.unitId(), rawPublic(key), null);
++        assertProtocolExceptionAfterConstraintViolation(() -> provisioning.activateParticipant(TENANT, community.communityId(), "Second", unit.unitId(), rawPublic(key), null));
++    }
++
++    private void assertProtocolExceptionAfterConstraintViolation(org.junit.jupiter.api.function.Executable action) {
++        jdbc.execute("savepoint expected_failure");
++        try { assertThrows(ProtocolException.class, action); }
++        finally { jdbc.execute("rollback to savepoint expected_failure"); jdbc.execute("release savepoint expected_failure"); }
++    }
++
++    @Test void provisioningRejectsInvalidUnitCodeCreditFloorAndPublicKey() throws Exception {
++        var community = provisioning.createCommunity(TENANT, "Bad Input");
++        assertThrows(ProtocolException.class, () -> provisioning.createUnit(TENANT, community.communityId(), "lowercase", 2));
++        var unit = provisioning.createUnit(TENANT, community.communityId(), "OK", 2);
++        assertThrows(ProtocolException.class, () -> provisioning.activateParticipant(TENANT, community.communityId(), "X", unit.unitId(), "not-a-valid-key", null));
++        assertThrows(ProtocolException.class, () -> provisioning.activateParticipant(TENANT, community.communityId(), "X", unit.unitId(),
++            rawPublic(KeyPairGenerator.getInstance("Ed25519").generateKeyPair()), new BigInteger("100")));
++    }
++
++    @Test void deviceLifecycleAddsASecondCredentialToTheSameControllerAndRevocationDisablesOnlyThatOne() throws Exception {
++        var community = provisioning.createCommunity(TENANT, "Devices");
++        var unit = provisioning.createUnit(TENANT, community.communityId(), "DEV", 2);
++        Party ana = activate(community.communityId(), unit.unitId(), "Ana", null);
++        Party pedro = activate(community.communityId(), unit.unitId(), "Pedro", null);
++
++        // Ana adds a second device (credential) bound to her SAME controller - never a new
++        // controller, never touching AccountControlPolicy's threshold/eligible-controller set.
++        KeyPair phoneKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
++        var phoneCredential = provisioning.addCredential(TENANT, community.communityId(), ana.controllerId(), rawPublic(phoneKey));
++        assertEquals(ana.controllerId(), phoneCredential.controllerId());
++
++        var credentials = discovery.credentialsForController(TENANT, community.communityId(), ana.controllerId());
++        assertEquals(2, credentials.size());
++        assertTrue(credentials.stream().anyMatch(c -> c.credentialId().equals(ana.credentialId())));
++        assertTrue(credentials.stream().anyMatch(c -> c.credentialId().equals(phoneCredential.credentialId())));
++
++        OstrisWireCodec wire = new OstrisWireCodec();
++
++        // Sign with the NEW phone credential (not the original device) - it satisfies the same
++        // 1-of-1 policy because both credentials resolve to the same, already-eligible controller.
++        UUID tx = UUID.randomUUID();
++        transactions.propose(new CommitTransactionCommand(TENANT, community.communityId(), unit.unitId(), tx, TransactionPurpose.EXCHANGE,
++            List.of(new CommitTransactionCommand.Entry(pedro.accountId(), "-100"), new CommitTransactionCommand.Entry(ana.accountId(), "100")), Map.of(), null));
++        byte[] message = wire.authorizationMessage(wire.parse(discovery.transaction(TENANT, tx).authorizationPayload()));
++        transactions.addAccountEvidence(TENANT, tx, pedro.accountId(), pedro.credentialId(), sign(message, pedro.key()));
++        transactions.addAccountEvidence(TENANT, tx, ana.accountId(), phoneCredential.credentialId(), sign(message, phoneKey));
++        CommitReceipt receipt = transactions.commit(TENANT, tx);
++        assertEquals(1L, receipt.communitySequence());
++        entityManager.flush();
++
++        // Revoke the phone credential; a transaction relying ONLY on it must now fail closed - the
++        // signature itself still verifies (it's cryptographically valid), but the credential no
++        // longer resolves to an eligible controller.
++        provisioning.revokeCredential(TENANT, community.communityId(), phoneCredential.credentialId());
++        UUID tx2 = UUID.randomUUID();
++        transactions.propose(new CommitTransactionCommand(TENANT, community.communityId(), unit.unitId(), tx2, TransactionPurpose.EXCHANGE,
++            List.of(new CommitTransactionCommand.Entry(pedro.accountId(), "-50"), new CommitTransactionCommand.Entry(ana.accountId(), "50")), Map.of(), null));
++        byte[] message2 = wire.authorizationMessage(wire.parse(discovery.transaction(TENANT, tx2).authorizationPayload()));
++        transactions.addAccountEvidence(TENANT, tx2, pedro.accountId(), pedro.credentialId(), sign(message2, pedro.key()));
++        transactions.addAccountEvidence(TENANT, tx2, ana.accountId(), phoneCredential.credentialId(), sign(message2, phoneKey));
++        ProtocolException revokedError = assertThrows(ProtocolException.class, () -> transactions.commit(TENANT, tx2));
++        assertEquals("CREDENTIAL_NOT_ELIGIBLE", revokedError.code());
++        // tx2 itself now carries permanent evidence from a since-revoked credential and fails closed
++        // forever (osTRIS never silently ignores bad evidence already on a proposal) - a fresh
++        // proposal is what a real client would create for its retry, exactly like this test does.
++
++        // The ORIGINAL device credential still works on a fresh proposal - revoking the phone
++        // credential touched nothing else.
++        UUID tx3 = UUID.randomUUID();
++        transactions.propose(new CommitTransactionCommand(TENANT, community.communityId(), unit.unitId(), tx3, TransactionPurpose.EXCHANGE,
++            List.of(new CommitTransactionCommand.Entry(pedro.accountId(), "-50"), new CommitTransactionCommand.Entry(ana.accountId(), "50")), Map.of(), null));
++        byte[] message3 = wire.authorizationMessage(wire.parse(discovery.transaction(TENANT, tx3).authorizationPayload()));
++        transactions.addAccountEvidence(TENANT, tx3, pedro.accountId(), pedro.credentialId(), sign(message3, pedro.key()));
++        transactions.addAccountEvidence(TENANT, tx3, ana.accountId(), ana.credentialId(), sign(message3, ana.key()));
++        CommitReceipt receipt2 = transactions.commit(TENANT, tx3);
++        assertEquals(2L, receipt2.communitySequence());
++    }
++
++    @Test void deviceCredentialManagementRejectsUnknownControllerDuplicateKeyAndDoubleRevoke() throws Exception {
++        var community = provisioning.createCommunity(TENANT, "Devices Bad Input");
++        var unit = provisioning.createUnit(TENANT, community.communityId(), "DVB", 2);
++        Party ana = activate(community.communityId(), unit.unitId(), "Ana", null);
++
++        assertThrows(ProtocolException.class, () -> provisioning.addCredential(TENANT, UUID.randomUUID(), ana.controllerId(),
++            rawPublic(KeyPairGenerator.getInstance("Ed25519").generateKeyPair())));
++        assertThrows(ProtocolException.class, () -> provisioning.addCredential(TENANT, community.communityId(), UUID.randomUUID(),
++            rawPublic(KeyPairGenerator.getInstance("Ed25519").generateKeyPair())));
++        assertProtocolExceptionAfterConstraintViolation(() -> provisioning.addCredential(TENANT, community.communityId(), ana.controllerId(), rawPublic(ana.key())));
++
++        provisioning.revokeCredential(TENANT, community.communityId(), ana.credentialId());
++        assertThrows(ProtocolException.class, () -> provisioning.revokeCredential(TENANT, community.communityId(), ana.credentialId()));
++        assertThrows(ProtocolException.class, () -> provisioning.revokeCredential(TENANT, community.communityId(), UUID.randomUUID()));
++    }
++
++    private static String rawPublic(KeyPair pair) {
++        byte[] encoded = pair.getPublic().getEncoded();
++        return Base64.getUrlEncoder().withoutPadding().encodeToString(Arrays.copyOfRange(encoded, encoded.length - 32, encoded.length));
++    }
++    private static String sign(byte[] message, KeyPair pair) throws Exception {
++        Signature s = Signature.getInstance("Ed25519"); s.initSign(pair.getPrivate()); s.update(message);
++        return Base64.getUrlEncoder().withoutPadding().encodeToString(s.sign());
++    }
++}
+diff --git a/docs/specification/PUBLIC_APPLICATION_API_V1.md b/docs/specification/PUBLIC_APPLICATION_API_V1.md
+new file mode 100644
+index 0000000..41bc482
+--- /dev/null
++++ b/docs/specification/PUBLIC_APPLICATION_API_V1.md
+@@ -0,0 +1,67 @@
++# Public application API v1
++
++Implementation-level HTTP reference for an external application (e.g. STIR) integrating osTRIS.
++This is **not** protocol specification - it exposes normative concepts already defined in
++`CORE_PROTOCOL_V0_1.md`/`CORE_WIRE_AND_DECISION_SEMANTICS_V0_1.md` through clean read/provisioning
++endpoints. Where this document and those disagree on economic/cryptographic semantics, the
++normative specs govern.
++
++All endpoints require an authenticated IDAX request in the target tenant (the same bearer token
++used against any other module in the instance) and enforce tenant isolation via RLS plus explicit
++tenant-scoped queries, matching every other osTRIS endpoint.
++
++## Discovery (`OSTRIS_DISCOVERY_READ`, `OSTRIS_TRANSACTION_READ`)
++
++| Method | Path | Returns |
++|---|---|---|
++| GET | `/api/ostris/communities` | Communities in the caller's tenant |
++| GET | `/api/ostris/communities/{community}` | One community |
++| GET | `/api/ostris/communities/{community}/units` | Units of account in the community |
++| GET | `/api/ostris/communities/{community}/units/{unit}` | One unit (`code`, `scale`) |
++| GET | `/api/ostris/communities/{community}/accounts/{account}` | Account: `unitId`, `participantId`, `accountType`, `creditFloor`, `balanceProjection`, `riskState` |
++| GET | `/api/ostris/communities/{community}/credentials/{credential}` | Credential: public key, algorithm, activation/revocation sequence, bound `controllerId` |
++| GET | `/api/ostris/transactions/{id}` | Transaction status/signing/receipt (below) |
++
++`GET /api/ostris/transactions/{id}` is the one endpoint a client needs both **before** and
++**after** signing:
++
++```json
++{
++  "transactionId": "...", "communityId": "...", "unitId": "...", "purpose": "EXCHANGE",
++  "wireFormat": "OSTRIS-CORE-JCS-1", "ostrisCoreVersion": "0.1",
++  "authorizationPayload": "<exact canonical JCS UTF-8 text stored at propose() time>",
++  "authorizationDigest": "<sha256 hex of OSTRIS:TX:AUTH:V1 || 0x00 || authorizationPayload bytes>",
++  "status": "PROPOSED | COMMITTED",
++  "committedSequence": null, "protocolDigest": null,
++  "authorizedAccountIds": ["..."]
++}
++```
++
++A client never reconstructs `AuthorizationPayload` itself. It fetches this exact `authorizationPayload`
++string, builds the signing bytes as `UTF8("OSTRIS:TX:AUTH:V1") || 0x00 || UTF8(authorizationPayload)`,
++signs those bytes with the account's Ed25519 credential, and POSTs the resulting
++`signatureBase64url` to `POST /api/ostris/transactions/{id}/authorizations` (unchanged, see
++`TransactionController`). `status` never becomes `"REJECTED"`: a failed `commit()` call throws
++synchronously (the caller learns rejection from that HTTP error) and the proposal simply stays
++`PROPOSED` forever - polling this endpoint is for reconciling a client that lost the commit
++response, not for discovering rejection.
++
++## Provisioning (`OSTRIS_COMMUNITY_MANAGE`, `OSTRIS_PARTICIPANT_ACTIVATE`)
++
++| Method | Path | Body | Creates |
++|---|---|---|---|
++| POST | `/api/ostris/communities` | `{name}` | Community |
++| POST | `/api/ostris/communities/{community}/units` | `{code, scale}` | Unit of account |
++| POST | `/api/ostris/communities/{community}/participants/activate` | `{displayName, unitId, publicKeyBase64url, creditFloor?}` | Participant + Account + Credential + Controller + binding + 1-of-1 AccountControlPolicy |
++
++`activate` is the one call an application needs per user: it provisions exactly what
++`TransactionalAuthorizationPostgresTest`'s fixtures already built by hand (see that file), using
++`UuidV7` identifiers and `activation_sequence = 0` (active before any transaction commits, same as
++those fixtures). `publicKeyBase64url` is the caller's own already-generated Ed25519 public key -
++osTRIS never generates, sees or stores a private key. `creditFloor` defaults to `-100000` minor
++units and must be `<= 0`.
++
++Multi-credential rotation, RiskSubject/IdentityAssurance enrollment and governed multi-controller
++authorities remain out of this MVP surface; they provision directly against the normative tables
++(as today) or a future richer endpoint - this is intentionally the minimal path to one working,
++signable, committable account per participant.

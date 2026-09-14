@@ -1,6 +1,10 @@
 name: stir-dev
+x-logging: &default-logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "5"}
 services:
   postgres:
+    logging: *default-logging
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: idax
@@ -15,6 +19,7 @@ services:
       timeout: 5s
       retries: 30
   core-migrations:
+    logging: *default-logging
     build: ./vendor/idax-core-runtime
     entrypoint: [/bin/sh, -ec]
     command: ['exec flyway -url=jdbc:postgresql://postgres:5432/idax -user=postgres -password="$$(cat /run/secrets/postgres_password)" -schemas=idax_core -table=flyway_schema_history_idax_core migrate']
@@ -23,6 +28,7 @@ services:
       postgres: {condition: service_healthy}
     networks: [data]
   module-migrations:
+    logging: *default-logging
     image: flyway/flyway:11.12.0-alpine
     entrypoint: [/bin/sh, /migrate.sh]
     volumes:
@@ -36,6 +42,7 @@ services:
       core-migrations: {condition: service_completed_successfully}
     networks: [data]
   runtime-provision:
+    logging: *default-logging
     image: postgres:17-alpine
     entrypoint: [/bin/sh, /provision.sh]
     volumes: [./deploy/provision-runtime.sh:/provision.sh:ro]
@@ -44,6 +51,7 @@ services:
       module-migrations: {condition: service_completed_successfully}
     networks: [data]
   shell:
+    logging: *default-logging
     build:
       context: ./vendor/idax-shell
       dockerfile: ../../deploy/Shell.Dockerfile
@@ -71,6 +79,7 @@ services:
       timeout: 5s
       retries: 40
   stir:
+    logging: *default-logging
     build: ../stir-backend
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/idax
@@ -93,9 +102,11 @@ services:
       timeout: 5s
       retries: 40
   stir-ui:
+    logging: *default-logging
     build: ../stir-frontend
     networks: [edge]
   minio:
+    logging: *default-logging
     image: minio/minio:RELEASE.2025-04-08T15-41-24Z
     entrypoint: [/bin/sh, /run-minio.sh]
     volumes:
@@ -109,6 +120,7 @@ services:
       timeout: 5s
       retries: 30
   ostris:
+    logging: *default-logging
     build:
       context: ./vendor/ostris/backend
       dockerfile: ../../../deploy/Module.Dockerfile
@@ -132,9 +144,11 @@ services:
       timeout: 5s
       retries: 40
   ostris-ui:
+    logging: *default-logging
     build: ./vendor/ostris/frontend
     networks: [edge]
   ledger:
+    logging: *default-logging
     build:
       context: ./vendor/idax-ledger/backend
       dockerfile: ../../../deploy/Module.Dockerfile
@@ -158,9 +172,11 @@ services:
       timeout: 5s
       retries: 40
   ledger-ui:
+    logging: *default-logging
     build: ./vendor/idax-ledger/frontend
     networks: [edge]
   proxy:
+    logging: *default-logging
     image: caddy:2.9-alpine
     volumes: [./deploy/Caddyfile:/etc/caddy/Caddyfile:ro]
     ports: ['127.0.0.1:${STIR_HTTP_PORT:-8089}:8088']

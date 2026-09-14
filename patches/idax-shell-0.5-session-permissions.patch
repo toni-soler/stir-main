@@ -1,0 +1,153 @@
+diff --git a/src/main/java/io/github/tonisoler/idaxshell/auth/LocalAuthenticationService.java b/src/main/java/io/github/tonisoler/idaxshell/auth/LocalAuthenticationService.java
+index 5e083a5..6871acc 100644
+--- a/src/main/java/io/github/tonisoler/idaxshell/auth/LocalAuthenticationService.java
++++ b/src/main/java/io/github/tonisoler/idaxshell/auth/LocalAuthenticationService.java
+@@ -10,7 +10,9 @@ import es.idynamicsax.idax.service.auth.LocalAuthService;
+ import es.idynamicsax.idax.service.auth.LoginOutcome;
+ import es.idynamicsax.idax.service.auth.MfaForcedSetupService;
+ import es.idynamicsax.idax.service.auth.MfaLoginService;
++import es.idynamicsax.idax.service.permission.PermissionService;
+ import java.util.List;
++import java.util.Set;
+ import java.util.UUID;
+ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+ import org.springframework.security.authentication.BadCredentialsException;
+@@ -27,11 +29,12 @@ public class LocalAuthenticationService {
+   private final TenantRepository tenants;
+   private final MfaLoginService mfaLogin;
+   private final MfaForcedSetupService forcedSetup;
++  private final PermissionService permissions;
+ 
+   public LocalAuthenticationService(LocalAuthService coreAuthentication, TokenValidator tokenValidator,
+                                     AppUserRepository users, TenantUserRepository memberships,
+                                     TenantRepository tenants, MfaLoginService mfaLogin,
+-                                    MfaForcedSetupService forcedSetup) {
++                                    MfaForcedSetupService forcedSetup, PermissionService permissions) {
+     this.coreAuthentication = coreAuthentication;
+     this.tokenValidator = tokenValidator;
+     this.users = users;
+@@ -39,6 +42,7 @@ public class LocalAuthenticationService {
+     this.tenants = tenants;
+     this.mfaLogin = mfaLogin;
+     this.forcedSetup = forcedSetup;
++    this.permissions = permissions;
+   }
+ 
+   public Object login(String email, String password) {
+@@ -62,7 +66,7 @@ public class LocalAuthenticationService {
+     AppUser user = users.findById(currentUser.getUserId())
+         .orElseThrow(() -> new BadCredentialsException("Authenticated user no longer exists"));
+     return new Session(null, null, currentUser.getRoles().stream().sorted().toList(),
+-        toUser(user), tenantViews(user.getId()));
++        toUser(user, currentUser), tenantViews(user.getId()));
+   }
+ 
+   public Session verifyMfa(String challengeToken, String code) {
+@@ -86,7 +90,7 @@ public class LocalAuthenticationService {
+     AppUser user = users.findById(currentUser.getUserId())
+         .orElseThrow(() -> new IllegalStateException("Core issued a token for an unknown user"));
+     return new Session(tokens.accessToken(), tokens.refreshToken(), tokens.roles(),
+-        toUser(user), tenantViews(user.getId()));
++        toUser(user, currentUser), tenantViews(user.getId()));
+   }
+ 
+   private List<TenantView> tenantViews(UUID userId) {
+@@ -97,11 +101,19 @@ public class LocalAuthenticationService {
+         .toList();
+   }
+ 
+-  private User toUser(AppUser user) {
+-    return new User(user.getId(), user.getEmail(), user.getDisplayName(), Boolean.TRUE.equals(user.getIsSuperuser()));
++  /** effectivePermissions() is Core's own authoritative computation for this user in their
++   * CURRENT token's tenant (the same one every "@permissionService.hasPermission(...)" backend
++   * check already relies on) - module-defined permission codes (e.g. a STIR extension's
++   * "stir.moderation.manage") included, not just a fixed platform set. Without this, a module
++   * extension's frontend has no accurate client-side signal at all for "can this user do X",
++   * since the JWT itself carries no permission claims - only role names and the tenant id. */
++  private User toUser(AppUser user, CurrentUser currentUser) {
++    Set<String> effective = permissions.effectivePermissions(currentUser);
++    return new User(user.getId(), user.getEmail(), user.getDisplayName(), Boolean.TRUE.equals(user.getIsSuperuser()),
++        List.copyOf(effective));
+   }
+ 
+-  public record User(UUID id, String email, String displayName, boolean superuser) {}
++  public record User(UUID id, String email, String displayName, boolean superuser, List<String> permissions) {}
+   public record TenantView(UUID id, String code, String name) {}
+   public record Session(String accessToken, String refreshToken, List<String> roles, User user, List<TenantView> tenants) {}
+   public record MfaRequired(String status, String challengeToken) {}
+diff --git a/src/test/java/io/github/tonisoler/idaxshell/auth/LocalAuthenticationServiceTest.java b/src/test/java/io/github/tonisoler/idaxshell/auth/LocalAuthenticationServiceTest.java
+new file mode 100644
+index 0000000..b17559f
+--- /dev/null
++++ b/src/test/java/io/github/tonisoler/idaxshell/auth/LocalAuthenticationServiceTest.java
+@@ -0,0 +1,70 @@
++package io.github.tonisoler.idaxshell.auth;
++
++import es.idynamicsax.idax.domain.AppUser;
++import es.idynamicsax.idax.repository.AppUserRepository;
++import es.idynamicsax.idax.repository.TenantRepository;
++import es.idynamicsax.idax.repository.TenantUserRepository;
++import es.idynamicsax.idax.security.CurrentUser;
++import es.idynamicsax.idax.security.TokenValidator;
++import es.idynamicsax.idax.service.auth.LocalAuthService;
++import es.idynamicsax.idax.service.auth.MfaForcedSetupService;
++import es.idynamicsax.idax.service.auth.MfaLoginService;
++import es.idynamicsax.idax.service.permission.PermissionService;
++import java.util.List;
++import java.util.Optional;
++import java.util.Set;
++import java.util.UUID;
++import org.junit.jupiter.api.Test;
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.Mockito.*;
++
++/**
++ * A module extension's frontend (e.g. STIR) has no reliable client-side signal for "can this
++ * user do X" unless Session.user.permissions actually reflects Core's own authoritative
++ * effectivePermissions() for the CURRENT tenant - the JWT itself carries only role names, never
++ * permission codes. This proves session()/login() populate it, instead of leaving every
++ * module-defined permission (and, before this fix, every permission at all) invisible
++ * client-side regardless of what the user's role actually grants.
++ */
++class LocalAuthenticationServiceTest {
++    private final UUID userId = UUID.randomUUID();
++    private final UUID tenantId = UUID.randomUUID();
++
++    private LocalAuthenticationService service(PermissionService permissions, AppUserRepository users) {
++        return new LocalAuthenticationService(
++            mock(LocalAuthService.class), mock(TokenValidator.class), users,
++            mock(TenantUserRepository.class), mock(TenantRepository.class),
++            mock(MfaLoginService.class), mock(MfaForcedSetupService.class), permissions);
++    }
++
++    @Test void sessionPopulatesUserPermissionsFromCoresEffectivePermissionsForTheCurrentUser() {
++        var appUser = AppUser.builder().id(userId).email("a@stir.test").displayName("A").isSuperuser(false).build();
++        var users = mock(AppUserRepository.class);
++        when(users.findById(userId)).thenReturn(Optional.of(appUser));
++
++        var currentUser = new CurrentUser(userId, "a@stir.test", tenantId, false, Set.of("ROLE_MEMBER"));
++        var permissions = mock(PermissionService.class);
++        when(permissions.effectivePermissions(currentUser)).thenReturn(Set.of("stir.moderation.manage", "stir.listings.read"));
++
++        var session = service(permissions, users).session(currentUser);
++
++        assertTrue(session.user().permissions().contains("stir.moderation.manage"),
++            "a module-defined permission the user's role actually grants must be visible to the frontend");
++        assertTrue(session.user().permissions().contains("stir.listings.read"));
++        verify(permissions).effectivePermissions(currentUser);
++    }
++
++    @Test void sessionNeverInventsAPermissionCoreDidNotGrant() {
++        var appUser = AppUser.builder().id(userId).email("a@stir.test").displayName("A").isSuperuser(false).build();
++        var users = mock(AppUserRepository.class);
++        when(users.findById(userId)).thenReturn(Optional.of(appUser));
++
++        var currentUser = new CurrentUser(userId, "a@stir.test", tenantId, false, Set.of("ROLE_MEMBER"));
++        var permissions = mock(PermissionService.class);
++        when(permissions.effectivePermissions(currentUser)).thenReturn(Set.of());
++
++        var session = service(permissions, users).session(currentUser);
++
++        assertTrue(session.user().permissions().isEmpty());
++    }
++}

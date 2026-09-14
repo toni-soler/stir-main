@@ -1,0 +1,53 @@
+# Production overlay: `docker compose -f compose.yml -f compose.production.yml up -d`.
+# Never used alone - compose.yml still owns the service graph, build contexts, secrets and
+# volumes; this file only overrides what genuinely differs between local dev and a real public
+# deployment. See stir-doc/VALIDATION.md's 0.5 section and DEPLOYMENT.md for the full procedure.
+name: stir-prod
+services:
+  stir:
+    environment:
+      JAVA_TOOL_OPTIONS: -Xmx512m
+      STIR_SITE_NAME: ${STIR_SITE_NAME:?Set STIR_SITE_NAME in .env for production}
+      STIR_PUBLIC_BASE_URL: ${STIR_PUBLIC_BASE_URL:?Set STIR_PUBLIC_BASE_URL (https://...) in .env for production}
+      STIR_SUPPORT_CONTACT: ${STIR_SUPPORT_CONTACT:-}
+      STIR_MARKETPLACE_DESCRIPTION: ${STIR_MARKETPLACE_DESCRIPTION:-}
+      STIR_PRODUCTION_CHECKS_ENABLED: "true"
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
+    # Loopback-only on purpose, same as dev: the reverse proxy is the only intended entry point.
+    ports: ['127.0.0.1:${STIR_API_PORT:-8096}:8096']
+  shell:
+    environment:
+      JAVA_TOOL_OPTIONS: -Xmx512m
+      IDAX_LOCAL_DEMO_ENABLED: "true"
+      IDAX_LOCAL_DEMO_EMAIL: ${STIR_ADMIN_EMAIL:?Set STIR_ADMIN_EMAIL (a real address you control) in .env for production}
+      IDAX_LOCAL_DEMO_TENANT_CODE: ${STIR_TENANT_CODE:?Set STIR_TENANT_CODE in .env for production}
+      IDAX_LOCAL_DEMO_TENANT_NAME: ${STIR_SITE_NAME:?Set STIR_SITE_NAME in .env for production}
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
+  proxy:
+    volumes:
+      - ./deploy/Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      STIR_PUBLIC_HOSTNAME: ${STIR_PUBLIC_HOSTNAME:?Set STIR_PUBLIC_HOSTNAME (the bare domain, e.g. stir.es) in .env for production}
+    # Real internet-facing ports - Caddy handles the HTTP->HTTPS redirect and ACME cert itself.
+    ports: ['80:80', '443:443', '443:443/udp']
+  # All four Spring services permitAll() their own /swagger-ui/** and /v3/api-docs/** paths -
+  # fine for local development, not something a public instance should expose (stir/shell are
+  # disabled above too). Disabling springdoc entirely (rather than touching any service's own
+  # security filter chain) needs no vendor patch at all.
+  ostris:
+    environment:
+      JAVA_TOOL_OPTIONS: -Xmx512m
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
+  ledger:
+    environment:
+      JAVA_TOOL_OPTIONS: -Xmx512m
+      SPRINGDOC_API_DOCS_ENABLED: "false"
+      SPRINGDOC_SWAGGER_UI_ENABLED: "false"
+volumes:
+  caddy_data: {}
+  caddy_config: {}
