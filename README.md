@@ -1,6 +1,6 @@
 # STIR development instance — 0.5.0-rc1
 
-STIR is Sistema Transparente de Intercambio de Recursos. This repository composes an independent marketplace instance using public IDAX Open Core/Shell, osTRIS and Ledger 0.3.0. Application source is Apache-2.0. Core's publicly downloadable binary retains its separate binary license.
+STIR is Sistema Transparente de Intercambio de Recursos. This repository composes an independent marketplace instance using public IDAX Open Core, IDAX Shell, IDAX Ledger and osTRIS 0.4.0. Application source is Apache-2.0. Core's publicly downloadable binary retains its separate binary license.
 
 ## Quick start
 
@@ -40,9 +40,9 @@ Initializer pins anonymous public Git inputs to upstream.lock.json, preserves ex
 
 PostgreSQL 17 → public Core migrations → module migrations → runtime role provisioning → Shell/STIR/osTRIS/Ledger. nginx serves modules; Caddy exposes one browser origin. STIR maintains only its own listing tables. The public module Dockerfiles reference stale jar versions; deploy/Module.Dockerfile builds the same pinned source and selects the resulting jar without modifying those projects.
 
-The pinned Shell adapter in scripts/prepare_shell.py makes module mounting generic, passes selected tenant/user through the SDK and permits the STIR SPA path. Initialization checks each public origin and pinned commit, accepts only the exact reviewed patch, and rejects unexpected tracked or untracked source changes. Authentication, membership checks, permissions and saved filters remain Core/Shell responsibilities. The public administration CRUD component is not extensible to Listing; STIR supplies its own commercial form/cards using the available SDK.
+IDAX Shell 0.4 provides the manifest-driven extension host, active tenant/user SDK context and effective permissions that STIR previously supplied through temporary patches. Initialization checks each public origin and pinned commit, accepts only the remaining reviewed Ledger/osTRIS patches, and rejects unexpected tracked or untracked source changes. Authentication, membership checks, permissions and saved filters remain Core/Shell responsibilities. STIR supplies its own marketplace UI through the public extension SDK.
 
-STIR 0.5 includes the client-signed osTRIS EXCHANGE lifecycle introduced in 0.3. osTRIS remains the normative authority for authorization, policy evaluation, commit and reconciliation; STIR does not modify economic balances or journal state directly. Ledger/XRPL proof delivery remains independently configurable.
+STIR 0.5 includes the client-signed osTRIS EXCHANGE lifecycle introduced in 0.3. osTRIS remains the normative authority for authorization, policy evaluation, commit and reconciliation; STIR does not modify economic balances or journal state directly. The public osTRIS 0.4 baseline still receives STIR's reviewed discovery/provisioning/device compatibility patch until those APIs are released upstream. Ledger/XRPL proof delivery remains independently configurable.
 
 Migration jobs alone receive the PostgreSQL bootstrap credential. Application containers receive a distinct idax_backend credential, configured NOSUPERUSER and NOBYPASSRLS, with no database/schema creation privileges. Public module Flyway startup is disabled through small reviewed compatibility patches after the one-shot migrations finish. Production still requires immutable image digests, service-principal provisioning and a security review. The automated runtime proof checks the actual database login and both idax_app/idax_admin tenant contexts; the HTTP suite independently checks two ordinary participants.
 
