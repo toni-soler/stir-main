@@ -22,8 +22,9 @@ def request(path,method='GET',body=None,token=None,expected=200,extra_headers=No
     return json.loads(data) if data else None
 
 def main():
+    login_email=os.environ.get('STIR_TEST_LOGIN_EMAIL','admin@stir.test')
     request('/actuator/health/readiness')
-    session=request('/api/shell/v1/auth/login','POST',{'email':'admin@stir.test','password':(ROOT/'.local/secrets/login_password').read_text().strip()})
+    session=request('/api/shell/v1/auth/login','POST',{'email':login_email,'password':(ROOT/'.local/secrets/login_password').read_text().strip()})
     token=session['accessToken'];tenant=session['tenants'][0]['id'];base=f'/api/stir/tenants/{tenant}/listings'
     request(base,expected=401)
     request(base,token='invalid',expected=401)

@@ -1,5 +1,16 @@
 # Changelog
 
+## smoke.py: configurable login email for production
+
+DEPLOYMENT.md's "Initial deploy (production)" step 7 instructs running `python scripts/smoke.py`
+against a real production deployment, but the script hardcoded the dev bootstrap login
+(`admin@stir.test`) with no way to override it - it could never actually pass against a real
+`.env` with a different `STIR_ADMIN_EMAIL`, making that step silently wrong for any real
+deployment. Added `STIR_TEST_LOGIN_EMAIL` (defaults to `admin@stir.test`, so the existing dev
+flow and README.md's quick start are unaffected). Still needs `STIR_TEST_URL` set to the real
+public HTTPS origin in production - `http://localhost:8089` (the dev-only proxy port) is never
+published by `compose.production.yml`.
+
 ## Secret file permissions fix (real Linux deployment)
 
 On a real Linux host, `scripts/initialize.py` generated `.local/secrets/*` at mode 0600. Docker
