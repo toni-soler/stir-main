@@ -1,5 +1,24 @@
 # Changelog
 
+## MinIO image source fix
+
+`docker.io/minio/minio` now denies anonymous pulls of the pinned `RELEASE.2025-04-08T15-41-24Z`
+tag (`pull access denied ... repository does not exist or may require 'docker login'`) - MinIO
+moved distribution to `quay.io/minio/minio`, same official image and tag. `compose.yml`'s `minio`
+service now pulls from `quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z` instead. Verified by
+pulling the corrected image and bringing `minio`+`postgres` up healthy against it. Affects both
+the dev stack and the production overlay, since `compose.production.yml` does not override the
+`minio` service.
+
+## Host provisioning documentation
+
+New `HOST_PROVISIONING.md`: the bare-VM prerequisite step before DEPLOYMENT.md's "Initial deploy
+(production)" - installing Docker Engine + the Compose plugin, opening the firewall, and (Rocky
+Linux 9-specific) the SELinux relabel `compose.production.yml`'s read-only Caddyfile bind mount
+needs under Enforcing. Documents Rocky Linux 9 as the primary target with Ubuntu 22.04/24.04
+noted wherever the procedure differs. No product/runtime change. DEPLOYMENT.md step 1's dangling
+"(see DNS section below)" reference (no such section existed) now points here instead.
+
 ## Upstream 0.4 baseline
 
 Pinned the reproducible public stack to IDAX Core Runtime, IDAX Shell, IDAX Ledger and osTRIS 0.4.0. Shell 0.4 now provides the generic manifest-driven extension and session-permission contracts, so both temporary Shell patches were removed after reverse-application equivalence checks against the exact public tag. The reviewed Ledger migration switch and osTRIS migration/public-application-surface patches remain because those capabilities are not part of their 0.4 releases.

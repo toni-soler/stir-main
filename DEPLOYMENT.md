@@ -5,8 +5,9 @@ module's internals to run these. All commands run from this directory (`stir-mai
 
 ## Initial deploy (production)
 
-1. Provision a host reachable at the domain you'll use, with Docker + Docker Compose installed,
-   and that domain's DNS A/AAAA record already pointing at it (see DNS section below).
+1. Provision a host reachable at the domain you'll use, with Docker Engine + the Compose plugin
+   installed and that domain's DNS A/AAAA record already pointing at it. See HOST_PROVISIONING.md
+   for the full bare-VM procedure (Rocky Linux 9 and Ubuntu) if Docker is not installed yet.
 2. `python scripts/initialize.py` - pins public sources, generates local secrets (once; never
    regenerates an existing secret).
 3. `mkdir -p .local && touch .local/production` - the marker every other script in this directory
