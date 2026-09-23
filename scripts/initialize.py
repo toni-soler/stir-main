@@ -33,7 +33,14 @@ def main():
     for name in ['postgres_password', 'bootstrap_token', 'login_password', 'runtime_password', 'storage_access_key', 'storage_secret_key']:
         p = secret_dir / name
         if not p.exists(): p.write_text(secrets.token_urlsafe(36), encoding='utf-8')
-        if os.name != 'nt': p.chmod(0o600)
+        # 0644, not 0600: Docker Compose (non-Swarm) `secrets:` bind-mounts this exact host file
+        # into /run/secrets/<name>, preserving host permissions - and every service that reads
+        # one (shell, stir, ostris, ledger) runs as non-root (USER 10001) per its Dockerfile, a
+        # different UID/GID than whichever host user ran this script (root here, but the
+        # "non-root operator" flow HOST_PROVISIONING.md recommends works too, since this no
+        # longer depends on group/UID matching). Protection is still owner(root)-write-only;
+        # the realistic threat model is other host users, not the containers reading it.
+        if os.name != 'nt': p.chmod(0o644)
     openssl = shutil.which('openssl')
     if not openssl and os.name == 'nt':
         candidate = Path(os.environ.get('ProgramFiles', '')) / 'Git/usr/bin/openssl.exe'
@@ -43,7 +50,7 @@ def main():
     public = secret_dir / 'jwt_public_key'
     if not private.exists(): run(openssl, 'genpkey', '-algorithm', 'RSA', '-pkeyopt', 'rsa_keygen_bits:3072', '-out', str(private))
     if not public.exists(): run(openssl, 'pkey', '-in', str(private), '-pubout', '-out', str(public))
-    if os.name != 'nt': private.chmod(0o600); public.chmod(0o644)
+    if os.name != 'nt': private.chmod(0o644); public.chmod(0o644)
     print('Public inputs pinned; secrets preserved/generated. Login: admin@stir.test; password in .local/secrets/login_password')
 
 if __name__ == '__main__': main()

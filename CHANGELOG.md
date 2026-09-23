@@ -1,5 +1,20 @@
 # Changelog
 
+## Secret file permissions fix (real Linux deployment)
+
+On a real Linux host, `scripts/initialize.py` generated `.local/secrets/*` at mode 0600. Docker
+Compose (non-Swarm) `secrets:` bind-mounts that exact host file into a container's
+`/run/secrets/<name>`, preserving host permissions - and `shell`/`stir`/`ostris`/`ledger` each run
+as non-root (`USER 10001` in their Dockerfiles), a different UID than whichever host user ran
+`initialize.py`. Result: `cat: /run/secrets/runtime_password: Permission denied` inside those
+containers, surfacing as a Postgres `SCRAM-based authentication, but no password was provided`
+crash loop - reproducible on Rocky 9, and identically on any real Linux host (this is plain POSIX
+file permissions, not SELinux or Rocky-specific; a Windows/macOS Docker Desktop dev clone never
+hits it because `initialize.py` skips `chmod` entirely off POSIX). Fixed by generating these
+secret files at 0644 instead of 0600 - re-running `initialize.py` re-applies the new mode to
+already-generated files without changing their values. Verified the exact permission behavior
+(0600 denied, 0644 allowed for a non-owning UID) in a real Linux container.
+
 ## MinIO image source fix
 
 `docker.io/minio/minio` now denies anonymous pulls of the pinned `RELEASE.2025-04-08T15-41-24Z`
