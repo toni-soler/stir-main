@@ -1,10 +1,19 @@
-# STIR development instance — 0.2.0-SNAPSHOT
+# STIR development instance — 0.5.0-rc1
 
 STIR is Sistema Transparente de Intercambio de Recursos. This repository composes an independent marketplace instance using public IDAX Open Core/Shell, osTRIS and Ledger 0.3.0. Application source is Apache-2.0. Core's publicly downloadable binary retains its separate binary license.
 
 ## Quick start
 
-Requirements: Git, Python 3.10+, OpenSSL, Docker Compose v2 with Linux containers. For native validation: Java 21/Maven 3.9 and Node 22. Place the four independent STIR repositories as siblings. No STIR remote URL is assigned yet: obtain them from their eventual public locations; do not substitute an invented clone URL.
+Requirements: Git, Python 3.10+, OpenSSL, Docker Compose v2 with Linux containers. For native validation: Java 21/Maven 3.9 and Node 22. Clone the four independent public STIR repositories as siblings inside a clone of `stir-workspace`:
+
+```sh
+git clone https://github.com/toni-soler/stir-workspace.git stir
+cd stir
+git clone https://github.com/toni-soler/stir-doc.git
+git clone https://github.com/toni-soler/stir-backend.git
+git clone https://github.com/toni-soler/stir-frontend.git
+git clone https://github.com/toni-soler/stir-main.git
+```
 
 ```text
 workspace/
@@ -33,7 +42,7 @@ PostgreSQL 17 → public Core migrations → module migrations → runtime role 
 
 The pinned Shell adapter in scripts/prepare_shell.py makes module mounting generic, passes selected tenant/user through the SDK and permits the STIR SPA path. Initialization checks each public origin and pinned commit, accepts only the exact reviewed patch, and rejects unexpected tracked or untracked source changes. Authentication, membership checks, permissions and saved filters remain Core/Shell responsibilities. The public administration CRUD component is not extensible to Listing; STIR supplies its own commercial form/cards using the available SDK.
 
-osTRIS economic integration is not enabled in STIR. Ledger runs with XRPL disabled, and osTRIS proof delivery remains off. Public discovery/status/provisioning contracts and snapshot semantics must be completed before an economic vertical. There is no fake economic success.
+STIR 0.5 includes the client-signed osTRIS EXCHANGE lifecycle introduced in 0.3. osTRIS remains the normative authority for authorization, policy evaluation, commit and reconciliation; STIR does not modify economic balances or journal state directly. Ledger/XRPL proof delivery remains independently configurable.
 
 Migration jobs alone receive the PostgreSQL bootstrap credential. Application containers receive a distinct idax_backend credential, configured NOSUPERUSER and NOBYPASSRLS, with no database/schema creation privileges. Public module Flyway startup is disabled through small reviewed compatibility patches after the one-shot migrations finish. Production still requires immutable image digests, service-principal provisioning and a security review. The automated runtime proof checks the actual database login and both idax_app/idax_admin tenant contexts; the HTTP suite independently checks two ordinary participants.
 
@@ -49,7 +58,7 @@ docker compose down
 
 Backend Swagger is http://localhost:8096/swagger-ui/index.html; readiness is /actuator/health/readiness. Listing paths include `/api/stir/tenants/{tenantId}/listings` and require a Shell bearer token. Backend validation: `mvn -s .mvn/public-settings.xml clean verify` from stir-backend (Docker required for PostgreSQL test). Frontend: `npm ci`, `npm test`, `npm run i18n:validate`, `npm run build`.
 
-`down` preserves the database. Do not remove volumes unless deliberately discarding local data. The agent stops services it starts after verification. No tag, release, push or stir.es deployment is performed.
+`down` preserves the database. Do not remove volumes unless deliberately discarding local data. No production `stir.es` deployment is performed by these development commands.
 
 ## Optional browser verification
 
