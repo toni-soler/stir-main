@@ -117,18 +117,6 @@ index d43317e..4b62d92 100644
   @PostMapping("/{id}/authorizations") @PreAuthorize("@permissionService.hasPermission('OSTRIS_TRANSACTION_AUTHORIZE')") ResponseEntity<Void> authorize(@PathVariable UUID id,@Valid @RequestBody AccountAuthorization r){service.addAccountEvidence(TenantContext.get().getTenantId(),id,r.accountId(),r.credentialId(),r.signatureBase64url());return ResponseEntity.noContent().build();}
   @PostMapping("/{id}/governance-authorizations") @PreAuthorize("@permissionService.hasPermission('OSTRIS_TRANSACTION_AUTHORIZE')") ResponseEntity<Void> govern(@PathVariable UUID id,@Valid @RequestBody GovernanceAuthorization r){service.addGovernanceEvidence(TenantContext.get().getTenantId(),id,r.authorityId(),r.authorityPolicyVersion(),r.resolutionBasisType(),r.resolutionBasisId(),r.coveredAccounts(),r.credentialId(),r.signatureBase64url());return ResponseEntity.noContent().build();}
   @PostMapping("/{id}/commit") @PreAuthorize("@permissionService.hasPermission('OSTRIS_TRANSACTION_COMMIT')") ResponseEntity<CommitReceipt> commit(@PathVariable UUID id){return ResponseEntity.ok(service.commit(TenantContext.get().getTenantId(),id));}
-diff --git a/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java b/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java
-index d902410..be65850 100644
---- a/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java
-+++ b/backend/src/main/java/es/idynamicsax/ostris/config/OstrisFlywayConfig.java
-@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
- import org.springframework.context.annotation.Configuration;
- 
- @Configuration
-+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="idax.module.migrations.enabled", havingValue="true", matchIfMissing=true)
- public class OstrisFlywayConfig {
-     @Bean
-     Flyway flywayOstris(DataSource dataSource) {
 diff --git a/backend/src/main/java/es/idynamicsax/ostris/core/OstrisWireCodec.java b/backend/src/main/java/es/idynamicsax/ostris/core/OstrisWireCodec.java
 index 968eb4f..17b9023 100644
 --- a/backend/src/main/java/es/idynamicsax/ostris/core/OstrisWireCodec.java
