@@ -1,5 +1,29 @@
 # Changelog
 
+## Upstream pin bump: fixes found in the first real E2E review of stir.es
+
+Real browser E2E testing against production stir.es (see stir-doc/manual-usuario/) found several
+bugs and gated `deploy/extensions.json`'s `ledger` entry behind `"requiredPermission":"LEDGER_READ"`
+(hides the module card from users who can't use it - idax-shell's `ExtensionController` now
+filters by the caller's effective permissions; an entry without `requiredPermission` stays
+visible to everyone, unchanged). `upstream.lock.json` bumped to the commits carrying the fixes:
+
+- `idax-shell` -> `f2c92b1`: the active tenant never reached module extensions (Ledger's Proofs
+  rejected every call with "Tenant context is required"); the Users editor could change a user's
+  display-only "role" label without ever granting real permissions (the actual grant, a separate
+  roleIds assignment, had no UI at all until now); the extension manifest gained permission
+  filtering.
+- `idax-ledger` -> `ca17714`: Overview/Nodes/Ledgers/Transactions crashed or 500'd with every
+  network disabled instead of showing an empty state; the 403 error vocabulary was English-only
+  even under the Spanish locale.
+- `ostris` -> `5c0d1d2`: opening osTRIS left the whole Shell blank (a second, bundled copy of
+  React broke hooks) - now consumes Shell's shared React instance, same as Ledger already did.
+
+Also bumps to `stir-frontend` (separate repo, not upstream-pinned) for the same review's
+Marketplace/negotiations contrast and first-publication-flow findings - see its own CHANGELOG.
+
+Verified against the full rebuilt dev stack: `smoke.py` and `multitenant.py` both PASS.
+
 ## smoke.py: configurable login email for production
 
 DEPLOYMENT.md's "Initial deploy (production)" step 7 instructs running `python scripts/smoke.py`
