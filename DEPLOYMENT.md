@@ -41,7 +41,18 @@ reachability, backup count. Read-only.
 
 ## Update to a new version
 
-`python scripts/deploy.py --prod` (or no `--prod` for the dev stack) - builds, recreates
+`python scripts/update.py --prod` (or no `--prod` for the dev stack) is the one-command path
+after a fix lands upstream (in stir-main itself, stir-frontend, stir-backend, or a public
+vendor source pinned in `upstream.lock.json`): `git pull --ff-only` on this repo and every
+sibling repo present next to it (`stir-frontend`, `stir-backend`, `stir-doc`) → re-run
+`initialize.py` (re-pins `vendor/` to whatever `upstream.lock.json` now says, self-healing a
+stale checkout, and reapplies the reviewed patches) → `deploy.py [--prod]`. Refuses to pull over
+any repo with uncommitted tracked changes (untracked files, e.g. review notes, don't block it).
+In production it reads `STIR_PUBLIC_BASE_URL`/`STIR_ADMIN_EMAIL` from `.env` to point the
+post-deploy smoke check at the real site instead of the dev-only defaults.
+
+`python scripts/deploy.py --prod` (or no `--prod` for the dev stack) alone - skip the git
+pulls/re-pin and just rebuild+redeploy whatever is already checked out - builds, recreates
 services, waits for health, runs a non-destructive smoke check, and automatically rolls back to
 the previous images if either check fails. Never touches volumes.
 

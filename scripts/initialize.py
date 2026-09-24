@@ -22,7 +22,21 @@ def main():
         origin = subprocess.check_output(['git', '-C', str(target), 'remote', 'get-url', 'origin'], text=True).strip()
         if origin != spec['url']: raise SystemExit(f'{name}: unexpected origin')
         if actual != spec['commit']:
-            raise SystemExit(f'{name}: wrong upstream commit; use a clean pinned checkout')
+            # A previous run pinned this vendor clone to an older commit (or the reviewed
+            # patches below left it with uncommitted changes) - upstream.lock.json has since
+            # moved on, most often because this repo itself was just `git pull`ed. Self-heal to
+            # the newly pinned commit rather than making every operator hand-run the equivalent
+            # fetch+checkout after every pin bump. The only uncommitted state a vendor clone ever
+            # has is our own reviewed patches (prepare_shell.py, called below) - never real
+            # work - so discarding it here is always safe; prepare_shell.py reapplies it fresh
+            # against whatever commit we land on.
+            run('git', '-C', str(target), 'checkout', '--force', actual)
+            run('git', '-C', str(target), 'clean', '-fd')
+            run('git', '-C', str(target), 'fetch', 'origin', spec['commit'])
+            run('git', '-C', str(target), 'checkout', '--detach', spec['commit'])
+            actual = subprocess.check_output(['git', '-C', str(target), 'rev-parse', 'HEAD'], text=True).strip()
+        if actual != spec['commit']:
+            raise SystemExit(f'{name}: wrong upstream commit even after re-fetching; the pinned commit may not exist on {spec["url"]}')
     from prepare_shell import prepare
     prepare(ROOT)
     core=vendor/'idax-core-runtime'

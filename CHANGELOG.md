@@ -1,5 +1,18 @@
 # Changelog
 
+## One-command update: `scripts/update.py`
+
+Every upstream pin bump so far meant hand-running the same sequence on the target host: `git
+pull` this repo and every sibling repo, re-fetch/checkout whichever `vendor/` clone(s) moved to a
+new pinned commit (`initialize.py` only ever verified a pin, it never updated a stale one - the
+exact "idax-shell: wrong upstream commit" failure hit deploying the previous entry's fixes), then
+`deploy.py`. `initialize.py` now self-heals a stale vendor checkout to whatever `upstream.lock.json`
+currently pins (discarding only its own previously-applied patch state, never real work - the
+reviewed patches get reapplied fresh right after). New `scripts/update.py` chains the whole
+sequence: pull stir-main + present siblings (refusing over any uncommitted tracked change) →
+`initialize.py` → `deploy.py [--prod]`, deriving the production smoke check's target URL/login
+from `.env` instead of requiring them exported by hand.
+
 ## Upstream pin bump: fixes found in the first real E2E review of stir.es
 
 Real browser E2E testing against production stir.es (see stir-doc/manual-usuario/) found several
