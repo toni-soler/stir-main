@@ -1,5 +1,17 @@
 # Changelog
 
+## fix: proxy healthcheck always failed in production
+
+`compose.yml`'s `proxy` healthcheck hits `http://localhost:8088/actuator/health/readiness` -
+correct for the dev Caddyfile's `:8088` site block, but `Caddyfile.production` only ever defines
+`{$STIR_PUBLIC_HOSTNAME}` on 80/443. `compose.production.yml` never overrode it, so Caddy was
+unconditionally "unhealthy" in every production deploy regardless of actual health - found
+2026-09-24 when a redeploy's `deploy.py` health wait looked stuck for over an hour against an
+otherwise fully working stir.es. `compose.production.yml` now checks Caddy's own admin API
+instead (`127.0.0.1:2019/config/` - not `localhost`, which failed to resolve inside the Alpine
+container in testing), present regardless of which site blocks are configured. Verified the exact
+wget command against a real `caddy:2.9-alpine` container.
+
 ## One-command update: `scripts/update.py`
 
 Every upstream pin bump so far meant hand-running the same sequence on the target host: `git

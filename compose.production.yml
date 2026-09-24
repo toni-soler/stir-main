@@ -32,6 +32,17 @@ services:
       - caddy_config:/config
     environment:
       STIR_PUBLIC_HOSTNAME: ${STIR_PUBLIC_HOSTNAME:?Set STIR_PUBLIC_HOSTNAME (the bare domain, e.g. stir.es) in .env for production}
+    # compose.yml's own healthcheck hits the dev Caddyfile's :8088 site block, which
+    # Caddyfile.production never defines (production only serves STIR_PUBLIC_HOSTNAME on
+    # 80/443) - it always failed in production regardless of actual health, permanently marking
+    # this container unhealthy and stalling deploy.py's wait_healthy() (incident 2026-09-24:
+    # a redeploy looked stuck for over an hour on an otherwise-healthy stack because of this).
+    # Caddy's admin API on :2019 exists in both Caddyfiles' runtime regardless of site blocks.
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://127.0.0.1:2019/config/']
+      interval: 10s
+      timeout: 5s
+      retries: 30
     # Real internet-facing ports - Caddy handles the HTTP->HTTPS redirect and ACME cert itself.
     ports: ['80:80', '443:443', '443:443/udp']
   # All four Spring services permitAll() their own /swagger-ui/** and /v3/api-docs/** paths -
