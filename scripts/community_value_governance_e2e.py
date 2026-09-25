@@ -81,10 +81,37 @@ def main():
     assert evidence['status']=='INSUFFICIENT_DATA'
 
     # --- Platform SuperAdmin gets no community-governance capability by being SuperAdmin ---
-    request(ref,token=admin,expected=(401,403,404))
-    request(ref+'/observations',token=admin,expected=(401,403,404))
+    # Scoped hardening (ReferenceService.requireCommunityAuthority, GOVERNANCE_CAPTURE_THREAT_MODEL.md):
+    # the boundary protects MUTATION AUTHORITY only, at the service layer (not merely the controller),
+    # for exactly the six sensitive mutations this increment and the prior one introduced. Every one of
+    # them is asserted rejected for admin here (scenario 1: SuperAdmin -> controller -> rejected; the
+    # direct-service-call and stir.*-permission-is-not-enough scenarios are proven in
+    # ReferencePostgresTest, which calls ReferenceService/MarketIntegrityService with no controller in
+    # the path at all). Plain reads are deliberately NOT gated by this check - asserted succeeding for
+    # admin right below - so this also proves the explicit anti-over-blocking requirement: protecting
+    # mutation authority must not turn all of STIR into inaccessible for a platform administrator.
     request(ref+'/policies','POST',{'windowDays':90,'minimumObservations':5,'minimumParticipants':6,
         'maximumParticipantShare':'0.40','freshnessDays':30,'explanation':'SuperAdmin attempt'},admin,expected=(401,403,404))
+    request(base+'/references','POST',{'name':'SuperAdmin Definition','scope':'Should never be created',
+        'attributes':{},'quantityBasis':'1','quantityUnit':'unit'},admin,expected=(401,403,404))
+    request(ref+'/proposals','POST',{'kind':'CONVENTION','lowerValue':'1','upperValue':'1',
+        'explanation':'SuperAdmin attempt','origin':'SuperAdmin','validDays':30},admin,expected=(401,403,404))
+    request(base+'/references/proposals/'+str(uuid.uuid4())+'/publish','POST',
+        {'decision':'SuperAdmin attempt'},admin,expected=(401,403,404))
+    request(base+'/references/integrity/signals','POST',{'observationId':str(uuid.uuid4()),
+        'signalCode':'OUTLIER_PENDING_REVIEW','reason':'SuperAdmin attempt','evidenceRefs':[]},admin,expected=(401,403,404))
+    request(base+'/references/integrity/cases/'+str(uuid.uuid4())+'/decisions','POST',
+        {'status':'UNDER_REVIEW','reason':'SuperAdmin attempt'},admin,expected=(401,403,404))
+    # Ordinary reads stay reachable for admin - this is the deliberate boundary, not an oversight.
+    # (community()/definitions()/view()/observations()/evidence-manifest() are all still gated by
+    # idax-core's pre-existing, out-of-scope stir.* superuser permission bypass - documented as a
+    # residual, deliberate scope decision in GOVERNANCE_CAPTURE_THREAT_MODEL.md, not silently left.)
+    assert request(ref,token=admin)['definition']['id']==definition['id']
+    assert isinstance(request(ref+'/observations',token=admin),list)
+    # SuperAdmin's genuinely legitimate platform function (scenario 5) already ran earlier in this
+    # very script, in the same admin session that every rejection above reuses: creating the
+    # 'publisher2' role and provisioning diego through it, both real idax-shell platform-admin HTTP
+    # calls that succeeded. SuperAdmin exclusion from community governance costs it nothing there.
 
     # --- Reference policy: ordinary publisher governance inside constitutional floors ---
     tightened=request(ref+'/policies','POST',{'windowDays':60,'minimumObservations':7,'minimumParticipants':6,
