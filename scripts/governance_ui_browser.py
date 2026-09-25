@@ -37,7 +37,7 @@ def main():
             page.locator('.module-card').filter(has=page.get_by_role('heading',name='STIR',exact=True)).click()
             page.locator('.surface > header select').first.select_option(label=name)
             page.goto('http://localhost:8089/stir/governance')
-            expect(page.get_by_text('autoridad constitucional',exact=False)).to_be_visible()
+            expect(page.get_by_text('Define sus siete asientos',exact=False)).to_be_visible()
 
             # --- Bootstrap: generate all seven seat keys plus the guardian's, entirely client-side ---
             forms=page.locator('article.stir-form')
@@ -63,7 +63,7 @@ def main():
 
             # --- Ordinary amendment: raise the operational observation floor, 7-of-7 ---
             page.get_by_text('Proponer un cambio',exact=True).click()
-            page.get_by_label('Observaciones minimas',exact=True).fill('7')
+            page.get_by_label('Observaciones mínimas',exact=True).fill('7')
             page.get_by_test_id('proposal-reason').fill('Raise the observation floor after review')
             page.get_by_test_id('proposal-submit').click()
             proposal=page.locator('article.stir-panel').filter(has_text='Enmendar la constitucion').first
@@ -133,7 +133,7 @@ def main():
             possession_signature=json.loads(sign_tool.get_by_test_id('sign-tool-output').input_value())['signature']
 
             rotation.locator('summary',has_text='Activar').click()
-            rotation.get_by_label('Firma del guardian',exact=True).fill(guardian_signature)
+            rotation.get_by_label('Firma del guardián',exact=True).fill(guardian_signature)
             rotation.get_by_label('Firma de posesion de la nueva clave',exact=True).fill(possession_signature)
             rotation.get_by_role('button',name='Activar',exact=True).click()
             expect(page.get_by_text('Asiento 7: ACTIVE',exact=False)).to_be_visible()
