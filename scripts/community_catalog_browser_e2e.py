@@ -126,11 +126,17 @@ def main():
                 target = Path(marker_path).resolve()
                 if not target.is_relative_to((runtime_root / ".local").resolve()):
                     raise ValueError("Upgrade marker must stay under the ignored .local directory")
+                # Recorded so the upgrade script can assert the compatibility surface (COMMUNITY_EXTENSION_GUIDE.md)
+                # stays stable across a frontend-only swap - the whole point of declaring it.
+                instance = request("/api/stir/instance")
                 target.write_text(json.dumps({
                     "tenant_name": tenant_name, "tenant_id": tenant,
                     "pedro_email": pedro_email, "pedro_password": pedro_password,
                     "listing_id": listing["id"], "negotiation_id": negotiation_id,
                     "photo_id": photo_id, "title": title,
+                    "stir_version": instance["stirVersion"],
+                    "catalog_contract_version": instance["catalogContractVersion"],
+                    "external_contract_schema_version": instance["externalContractSchemaVersion"],
                 }), encoding="utf-8")
             print("PASS: ordinary participant sent a real offer through the second Shell presentation; STIR gallery showed the authenticated photo")
         finally:

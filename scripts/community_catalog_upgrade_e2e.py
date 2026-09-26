@@ -28,6 +28,15 @@ def main():
     assert negotiation["listingId"] == listing["id"] and negotiation["offers"][0]["message"] == "I would like this resource"
     assert photos[0]["id"] == marker["photo_id"]
 
+    # This is a frontend-only rebuild (backend and its migrations are untouched), so the
+    # compatibility surface (COMMUNITY_EXTENSION_GUIDE.md) must read back exactly the same -
+    # otherwise the declaration would be decorative rather than something a distribution can
+    # actually check before/after its own upgrade.
+    instance = smoke.request("/api/stir/instance")
+    assert instance["stirVersion"] == marker["stir_version"]
+    assert instance["catalogContractVersion"] == marker["catalog_contract_version"]
+    assert instance["externalContractSchemaVersion"] == marker["external_contract_schema_version"]
+
     errors = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel="msedge", headless=True)
@@ -52,7 +61,7 @@ def main():
             page.goto(smoke.BASE + "/stir/listing/" + marker["listing_id"])
             expect(page.locator(".stir-gallery img")).to_be_visible()
             assert not errors, errors
-            print("PASS: earlier tenant, listing, authenticated photo and negotiation survive the frontend upgrade")
+            print("PASS: earlier tenant, listing, authenticated photo, negotiation and the declared compatibility surface survive the frontend upgrade")
         finally:
             browser.close()
 
