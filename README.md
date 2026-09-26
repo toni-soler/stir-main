@@ -62,4 +62,6 @@ Backend Swagger is http://localhost:8096/swagger-ui/index.html; readiness is /ac
 
 ## Optional browser verification
 
+The [Community catalog composition](examples/community-catalog/README.md) demonstrates a second presentation consuming STIR's public catalog artifact. Its browser proof uses an isolated tenant and leaves the default deployment manifest untouched.
+
 With Microsoft Edge installed, create a local Python virtual environment, install `requirements-browser.txt` from public PyPI, and run `python scripts/browser-smoke.py`. It reads the generated local login secret without printing it, opens a headless browser, verifies the module and Listing UI, writes an ignored screenshot under `.local`, and closes its browser. The HTTP/RLS suite requires no browser package.

@@ -1,0 +1,10 @@
+services:
+  shell:
+    volumes:
+      - ./examples/community-catalog/extensions.json:/app/extensions.json:ro
+  stir-ui:
+    volumes:
+      - ../stir-frontend/dist/examples/extensions/community-catalog:/usr/share/nginx/html/extensions/community-catalog:ro
+  proxy:
+    volumes:
+      - ./examples/community-catalog/Caddyfile:/etc/caddy/Caddyfile:ro
