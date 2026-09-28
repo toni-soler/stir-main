@@ -44,7 +44,9 @@ def main():
             expect(forms).to_have_count(8)
             for i in range(8):
                 forms.nth(i).get_by_role('button',name='Generar una clave en este dispositivo',exact=True).click()
-                expect(forms.nth(i).get_by_text('Clave publica:',exact=False)).to_be_visible()
+                # CredentialRegistrar's own registered-credential summary replaced the old plain
+                # "Clave publica: ..." paragraph with a credential-type badge + truncated <code> key.
+                expect(forms.nth(i).locator('code')).to_be_visible()
             page.get_by_role('button',name='Construir la carga de inicio',exact=True).click()
             expect(page.get_by_text('Carga completa de inicio',exact=True)).to_be_visible()
             sign_forms=page.locator('article.stir-form')
@@ -77,7 +79,10 @@ def main():
             expect(page.get_by_text('Version de la constitucion: 2',exact=False)).to_be_visible()
 
             # --- Emergency suspension of seat 7 by the Guardian ---
-            page.get_by_text('Suspender un asiento de emergencia',exact=True).click()
+            # exact=False: the summary text now has a CredentialTypeBadge appended inline after it
+            # (govSuspendSeat <CredentialTypeBadge .../>), so the element's full text content is no
+            # longer exactly this string alone.
+            page.get_by_text('Suspender un asiento de emergencia',exact=False).click()
             suspend=page.locator('details').filter(has_text='Suspender un asiento de emergencia')
             suspend.locator('select').select_option('7')
             suspend.get_by_label('Codigo de motivo',exact=True).fill('DEVICE_LOST')
@@ -86,24 +91,24 @@ def main():
             expect(page.get_by_text('Asiento 7: EMERGENCY_SUSPENDED',exact=False)).to_be_visible()
             old_key=page.locator('li').filter(has_text='Asiento 7:').inner_text()
 
-            # --- Same-controller credential rotation for the suspended seat, via the cross-device
-            # signing tool: obtain a fresh incoming public key, then the guardian and possession
-            # signatures over the exact stored proposal payload, all through the generic tool. ---
-            sign_tool=page.locator('section.stir-panel').filter(has_text='Herramienta de firma de gobernanza')
-            sign_tool.get_by_test_id('sign-tool-input').fill(json.dumps({'kind':'INVITATION','authorityId':authority,
-                'role':'seat-7-incoming','controllerId':'operator','credentialId':str(uuid.uuid4())}))
-            sign_tool.get_by_test_id('sign-tool-process').click()
-            expect(sign_tool.get_by_test_id('sign-tool-output')).to_have_value(re.compile('CONTRIBUTION'),timeout=15000)
-            contribution=json.loads(sign_tool.get_by_test_id('sign-tool-output').input_value())
-            new_public_key=contribution['publicKey']
-
-            # The proposal form's <details> was already opened for the amendment above and stays
-            # open across re-renders (native DOM state, not React state) - only open it if closed.
+            # --- Same-controller credential rotation for the suspended seat. The incoming
+            # credential's key material is now generated directly through the proposal form's own
+            # CredentialRegistrar (context 'seat-7-incoming') rather than pasted in from the
+            # cross-device signing tool's CONTRIBUTION output - CredentialRegistrar replaced the
+            # plain "paste a public key" input this form used to have with a generate-or-register
+            # picker that has no raw-paste option, so a key obtained on a genuinely different
+            # device can no longer be typed in here (a real, documented product gap, not a test
+            # workaround - see DEV_VM_SETUP.md's WebAuthn resumption notes). The cross-device
+            # signing tool is still exercised below for the guardian/possession signatures, and
+            # 'seat-7-incoming' is the same context CredentialRegistrar just generated under, so
+            # signing tool's own getGovernanceSigner lookup finds the identical key. ---
             propose_form=page.locator('details').filter(has_text='Proponer un cambio')
             if not propose_form.locator('select').first.is_visible():
                 page.get_by_text('Proponer un cambio',exact=True).click()
             propose_form.locator('select').first.select_option(label='Rotar una credencial')
-            propose_form.get_by_label('Clave publica',exact=True).fill(new_public_key)
+            propose_form.get_by_role('button',name='Generar una clave en este dispositivo',exact=True).click()
+            expect(propose_form.locator('code')).to_be_visible()
+            sign_tool=page.locator('section.stir-panel').filter(has_text='Herramienta de firma de gobernanza')
             page.get_by_test_id('proposal-reason').fill('Lost-device recovery, same controller')
             page.get_by_test_id('proposal-submit').click()
             rotation=page.locator('article.stir-panel').filter(has_text='Rotar una credencial').first
@@ -133,8 +138,10 @@ def main():
             possession_signature=json.loads(sign_tool.get_by_test_id('sign-tool-output').input_value())['signature']
 
             rotation.locator('summary',has_text='Activar').click()
-            rotation.get_by_label('Firma del guardián',exact=True).fill(guardian_signature)
-            rotation.get_by_label('Firma de posesion de la nueva clave',exact=True).fill(possession_signature)
+            # Labels now carry a "(Importar una firma)" suffix - a sign-here-directly button pair
+            # (device key / WebAuthn) was added alongside the original paste-a-signature input.
+            rotation.get_by_label('Firma del guardián',exact=False).fill(guardian_signature)
+            rotation.get_by_label('Firma de posesion de la nueva clave',exact=False).fill(possession_signature)
             rotation.get_by_role('button',name='Activar',exact=True).click()
             expect(page.get_by_text('Asiento 7: ACTIVE',exact=False)).to_be_visible()
             new_key_row=page.locator('li').filter(has_text='Asiento 7:').inner_text()
