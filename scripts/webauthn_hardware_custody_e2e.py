@@ -154,13 +154,17 @@ def main():
         return request(api+'/proposals/'+p['id']+'/signatures','POST',dict(seatOrdinal=seat,
             credentialId=credentials[seat-1],signatureBase64url=sign_ed(keys[seat-1],DOMAIN,payload)),token)
     webauthn_sign_count=[0] # seat 7's authenticator counter, advances with each real use
+    # seat 7's currently-active WebAuthn key/credential - mutated in place once seat 7 itself
+    # rotates to a brand new hardware credential further below, so every later call keeps signing
+    # with whichever key is actually active for seat 7 right now, exactly like a real seat would.
+    seat7_active=[webauthn_seat_key,credentials[6]]
     def sign_seat7_webauthn(p,expected=200):
         payload=json.loads(p['payloadJson'])
         webauthn_sign_count[0]+=1
         message=DOMAIN.encode()+b'\x00'+canonical(payload)
-        envelope=webauthn_assertion(webauthn_seat_key,webauthn_sign_count[0],message)
+        envelope=webauthn_assertion(seat7_active[0],webauthn_sign_count[0],message)
         return request(api+'/proposals/'+p['id']+'/signatures','POST',
-            dict(seatOrdinal=7,credentialId=credentials[6],credentialEnvelope=envelope),token,expected)
+            dict(seatOrdinal=7,credentialId=seat7_active[1],credentialEnvelope=envelope),token,expected)
 
     # --- 3. A valid constitutional signature from the WebAuthn seat ---
     changed={**constitution,'independenceChecksRequired':False}
@@ -176,24 +180,38 @@ def main():
     # different proposal (challenge is bound to that exact payload's digest) ---
     p2=propose('AMEND_CONSTITUTION',{**changed,'concentrationChecksRequired':False},['concentrationChecksRequired'])
     for seat in range(1,7):sign_seat_ed(p2,seat)
-    payload2=json.loads(request(api+'/proposals/'+p2['id'],token=token)['payloadJson'])
+    payload2=json.loads(p2['payloadJson'])
     message2=DOMAIN.encode()+b'\x00'+canonical(payload2)
     webauthn_sign_count[0]+=1
     stale_envelope=webauthn_assertion(webauthn_seat_key,webauthn_sign_count[0],message2)
     request(api+'/proposals/'+p2['id']+'/signatures','POST',
         dict(seatOrdinal=7,credentialId=credentials[6],credentialEnvelope=stale_envelope),token)
-    # Replaying the exact same HTTP body again must fail - the seat already signed this proposal.
+    # Replaying the exact same HTTP body again must fail - but for a WEBAUTHN credential this is
+    # caught one layer earlier than the app-level "already signed" dedup: the authenticator's own
+    # sign_count was already advanced/stored by the first call above, so a second submission with
+    # that same (now-stale) sign_count trips WebAuthnCrypto's clone/replay check first
+    # (WebAuthnCryptoTest.assertionRejectsStaleOrClonedSignCounter proves this in isolation) and
+    # verify() never even reaches the seat-already-signed check - a stronger property than Ed25519's
+    # plain-signature dedup, not a weaker one, so this expects 400, not 409.
     request(api+'/proposals/'+p2['id']+'/signatures','POST',
-        dict(seatOrdinal=7,credentialId=credentials[6],credentialEnvelope=stale_envelope),token,409)
+        dict(seatOrdinal=7,credentialId=credentials[6],credentialEnvelope=stale_envelope),token,400)
+    # The app-level "already signed" dedup (independent of sign-counter replay) still needs its own
+    # proof: a FRESH, validly-signed envelope (new sign_count, so it clears WebAuthnCrypto's own
+    # check) for the same seat on the same already-signed proposal must still be rejected as 409.
+    webauthn_sign_count[0]+=1
+    fresh_envelope_same_proposal=webauthn_assertion(webauthn_seat_key,webauthn_sign_count[0],message2)
+    request(api+'/proposals/'+p2['id']+'/signatures','POST',
+        dict(seatOrdinal=7,credentialId=credentials[6],credentialEnvelope=fresh_envelope_same_proposal),token,409)
     # The same captured envelope cannot be presented as a signature for a THIRD, different proposal.
     p3=propose('AMEND_CONSTITUTION',{**changed,'minimumObservationFloor':6},['minimumObservationFloor'])
     request(api+'/proposals/'+p3['id']+'/signatures','POST',
         dict(seatOrdinal=7,credentialId=credentials[6],credentialEnvelope=stale_envelope),token,400)
-    print('PASS: a WebAuthn signature cannot be replayed for a second proposal, and double-submission is rejected')
+    print('PASS: a replayed WebAuthn assertion is caught by sign-counter clone detection, a fresh '
+          'one is still caught by already-signed dedup, and cross-proposal replay is rejected')
 
     # --- 6/7. Cross-community and cross-tenant replay: a real assertion computed for THIS
     # community/tenant's exact payload cannot verify against a forged payload naming another one ---
-    payload3=json.loads(request(api+'/proposals/'+p3['id'],token=token)['payloadJson'])
+    payload3=json.loads(p3['payloadJson'])
     forged_community=dict(payload3, communityId=str(uuid.uuid4()))
     forged_message=DOMAIN.encode()+b'\x00'+canonical(forged_community)
     webauthn_sign_count[0]+=1
@@ -227,8 +245,34 @@ def main():
         token,409)
     print('PASS: Guardian suspended the WebAuthn seat (Guardian itself signing via WebAuthn); the suspended credential can no longer sign')
 
-    # --- 10/11/13. Same-controller recovery: SOFTWARE_ED25519 seat 1 -> WEBAUTHN, and separately
-    # WEBAUTHN seat 7 -> a brand NEW WebAuthn credential, both preserving their controller ---
+    # --- 10/11/13. Same-controller recovery: WEBAUTHN seat 7 -> a brand NEW WebAuthn credential,
+    # and separately SOFTWARE_ED25519 seat 1 -> WEBAUTHN, both preserving their controller.
+    # Guardian's EMERGENCY_SUSPEND_CREDENTIAL is one-at-a-time (GOVERNANCE_CAPTURE_THREAT_MODEL.md)
+    # - seat 7 is still suspended from step 8, so it must be fully rotated back to ACTIVE before
+    # seat 1 can be suspended at all; a second "suspend seat 7 again" call is neither needed nor
+    # possible (it is already EMERGENCY_SUSPENDED, which is all ROTATE_CREDENTIAL's own
+    # validateRecoveryProposal check requires) - go straight to registering its replacement. ---
+    new_seat7_key=ec.generate_private_key(ec.SECP256R1()); new_seat7_cred_id=b'seat7-new-hardware'
+    new_seat7_credential=str(uuid.uuid4())
+    new_seat7_public_key=register('seat-7-incoming',new_seat7_credential,new_seat7_key,new_seat7_cred_id)
+    rotate7=propose('ROTATE_CREDENTIAL',dict(affectedSeat=7,oldCredentialId=credentials[6],newCredentialId=new_seat7_credential,
+        newPublicKey=new_seat7_public_key,controllerId=controllers[6],continuityEvidenceRefs=['continuity-2'],
+        reason='Hardware key rotation',credentialType='WEBAUTHN',algorithm='ES256'),
+        ['affectedSeat','oldCredentialId','newCredentialId','newPublicKey','controllerId','continuityEvidenceRefs','reason'])
+    # Seat 1 hasn't rotated yet at this point - it still signs with its original Ed25519 key.
+    for seat in [1,2,3,4,5,6]: sign_seat_ed(rotate7,seat)
+    payload_r7=json.loads(rotate7['payloadJson'])
+    guardian_sign_count[0]+=1
+    exec7=dict(guardianEnvelope=webauthn_assertion(guardian_key,guardian_sign_count[0],GUARDIAN.encode()+b'\x00'+canonical(payload_r7)),
+        newKeyPossessionEnvelope=webauthn_assertion(new_seat7_key,0,POSSESSION.encode()+b'\x00'+canonical(payload_r7)))
+    activated7=request(api+'/proposals/'+rotate7['id']+'/activate','POST',exec7,token)
+    assert activated7['state']=='ACTIVATED'
+    seats_mid=request(api+'/'+community,token=token)['seats']
+    assert seats_mid[6]['credential_id']==new_seat7_credential and seats_mid[6]['controller_id']==controllers[6]
+    print('PASS: WEBAUTHN -> WEBAUTHN rotation activated, controller preserved')
+    seat7_active[0],seat7_active[1]=new_seat7_key,new_seat7_credential # seat 7 signs as its new self from here on
+
+    # Now that seat 7 is ACTIVE again, seat 1 can be suspended (one-at-a-time is satisfied).
     seq2=request(api+'/'+community,token=token)['nextSequence']
     declared2=datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z')
     suspension1=dict(format='STIR-KEY-SUSPENSION-1',tenantId=tenant,communityId=community,authorityId=authority,
@@ -247,51 +291,18 @@ def main():
         reason='Software to hardware migration',credentialType='WEBAUTHN',algorithm='ES256'),
         ['affectedSeat','oldCredentialId','newCredentialId','newPublicKey','controllerId','continuityEvidenceRefs','reason'])
     for seat in [2,3,4,5,6]: sign_seat_ed(rotate1,seat)
-    sign_seat7_webauthn(rotate1)
-    payload_r1=json.loads(request(api+'/proposals/'+rotate1['id'],token=token)['payloadJson'])
-    r1_message=DOMAIN.encode()+b'\x00'+canonical(payload_r1)
+    sign_seat7_webauthn(rotate1) # seat 7 signs with its NEW credential - proves it govern immediately after its own rotation
+    payload_r1=json.loads(rotate1['payloadJson'])
     guardian_sign_count[0]+=1
     exec1=dict(guardianEnvelope=webauthn_assertion(guardian_key,guardian_sign_count[0],GUARDIAN.encode()+b'\x00'+canonical(payload_r1)),
         newKeyPossessionEnvelope=webauthn_assertion(new_seat1_key,0,POSSESSION.encode()+b'\x00'+canonical(payload_r1)))
     activated1=request(api+'/proposals/'+rotate1['id']+'/activate','POST',exec1,token)
     assert activated1['state']=='ACTIVATED'
+    new_seat1_sign_count=[0]
     seats_after=request(api+'/'+community,token=token)['seats']
     assert seats_after[0]['credential_id']==new_seat1_credential and seats_after[0]['credential_type']=='WEBAUTHN'
     assert seats_after[0]['controller_id']==controllers[0], 'same controller - only the credential changed'
     print('PASS: same-controller rotation SOFTWARE_ED25519 -> WEBAUTHN activated, controller preserved')
-
-    # WebAuthn seat 7 -> a new WebAuthn credential (WEBAUTHN -> WEBAUTHN rotation)
-    seq3=request(api+'/'+community,token=token)['nextSequence']
-    declared3=datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z')
-    suspension7=dict(format='STIR-KEY-SUSPENSION-1',tenantId=tenant,communityId=community,authorityId=authority,
-        seat=7,credentialId=credentials[6],reasonCode='ROTATE_HARDWARE_KEY',evidenceRefs=['migration-2'],
-        sequence=seq3,declaredAt=declared3)
-    guardian_sign_count[0]+=1
-    request(api+'/'+community+'/emergency-suspensions','POST',dict(seatOrdinal=7,credentialId=credentials[6],
-        expectedSequence=seq3,declaredAt=declared3,reasonCode='ROTATE_HARDWARE_KEY',evidenceRefs=['migration-2'],
-        guardianEnvelope=webauthn_assertion(guardian_key,guardian_sign_count[0],GUARDIAN.encode()+b'\x00'+canonical(suspension7))),token)
-    new_seat7_key=ec.generate_private_key(ec.SECP256R1()); new_seat7_cred_id=b'seat7-new-hardware'
-    new_seat7_credential=str(uuid.uuid4())
-    new_seat7_public_key=register('seat-7-incoming',new_seat7_credential,new_seat7_key,new_seat7_cred_id)
-    rotate7=propose('ROTATE_CREDENTIAL',dict(affectedSeat=7,oldCredentialId=credentials[6],newCredentialId=new_seat7_credential,
-        newPublicKey=new_seat7_public_key,controllerId=controllers[6],continuityEvidenceRefs=['continuity-2'],
-        reason='Hardware key rotation',credentialType='WEBAUTHN',algorithm='ES256'),
-        ['affectedSeat','oldCredentialId','newCredentialId','newPublicKey','controllerId','continuityEvidenceRefs','reason'])
-    for seat in [2,3,4,5,6]: sign_seat_ed(rotate7,seat)
-    new_seat1_sign_count=[0]
-    payload_r1b=json.loads(request(api+'/proposals/'+rotate7['id'],token=token)['payloadJson'])
-    new_seat1_sign_count[0]+=1
-    request(api+'/proposals/'+rotate7['id']+'/signatures','POST',dict(seatOrdinal=1,credentialId=new_seat1_credential,
-        credentialEnvelope=webauthn_assertion(new_seat1_key,new_seat1_sign_count[0],DOMAIN.encode()+b'\x00'+canonical(payload_r1b))),token)
-    payload_r7=json.loads(request(api+'/proposals/'+rotate7['id'],token=token)['payloadJson'])
-    guardian_sign_count[0]+=1
-    exec7=dict(guardianEnvelope=webauthn_assertion(guardian_key,guardian_sign_count[0],GUARDIAN.encode()+b'\x00'+canonical(payload_r7)),
-        newKeyPossessionEnvelope=webauthn_assertion(new_seat7_key,0,POSSESSION.encode()+b'\x00'+canonical(payload_r7)))
-    activated7=request(api+'/proposals/'+rotate7['id']+'/activate','POST',exec7,token)
-    assert activated7['state']=='ACTIVATED'
-    seats_final=request(api+'/'+community,token=token)['seats']
-    assert seats_final[6]['credential_id']==new_seat7_credential and seats_final[6]['controller_id']==controllers[6]
-    print('PASS: WEBAUTHN -> WEBAUTHN rotation activated, controller preserved')
 
     # --- 9. The prior (now-revoked) credential remains verifiable in history ---
     history=request(api+'/'+community+'/credentials',token=token)
@@ -305,7 +316,7 @@ def main():
     for seat in [2,3,4,5,6]: sign_seat_ed(frozen_check,seat)
     request(api+'/proposals/'+frozen_check['id']+'/signatures','POST',dict(seatOrdinal=1,credentialId=new_seat1_credential,
         credentialEnvelope=webauthn_assertion(new_seat1_key,new_seat1_sign_count[0]+1,DOMAIN.encode()+b'\x00'+canonical(
-            json.loads(request(api+'/proposals/'+frozen_check['id'],token=token)['payloadJson'])))),token)
+            json.loads(frozen_check['payloadJson'])))),token)
     request(api+'/proposals/'+frozen_check['id']+'/activate','POST',{},token,409)
     print('PASS: 6-of-7 still cannot activate a constitutional action, regardless of credential type mix')
 
