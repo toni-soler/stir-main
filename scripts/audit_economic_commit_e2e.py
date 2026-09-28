@@ -8,12 +8,20 @@ pattern as multitenant.py/marketplace_e2e.py (idax_core.tenant_create + public S
 a direct Core/osTRIS table write. Never invoke against a production deployment.
 """
 import base64
+import os
 import secrets
 import uuid
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 from smoke import ROOT, request
 from multitenant import sql
+import urllib.request
+
+def fault_once(mode):
+    with urllib.request.urlopen(urllib.request.Request(
+        os.environ.get('STIR_AUDIT_FAULT_PROXY_URL','http://localhost:18095')+'/__audit/mode/'+mode,
+        data=b'', method='POST'), timeout=5) as response:
+        assert response.status == 204
 
 # OstrisClient relays the CALLER'S OWN bearer token to osTRIS (never a separate service
 # credential - see OstrisClient's own docstring), so osTRIS's @PreAuthorize checks run against this
@@ -63,7 +71,7 @@ def open_and_accept(base_a, ana, pedro, direction, title, category, first_amount
     agreement = request(base_a+f"/negotiations/{negotiation['id']}/accept",'POST',{'offerId':head['id'],'expectedVersion':negotiation['version']},acceptor['accessToken'])
     return agreement, final_amount
 
-def run_exchange(base_a, initiator_session, owner_session, agreement_id, initiator_key, owner_key):
+def run_exchange(base_a, initiator_session, owner_session, agreement_id, initiator_key, owner_key, fault_plan=None):
     """Activates the Trade, has both parties sign with their own real keys, and commits. Returns
     the final trade view. `initiator_key`/`owner_key` are (private_key, public_key_b64url,
     credential_id) triples - credential_id identifies WHICH of the caller's devices signed (see
@@ -75,7 +83,19 @@ def run_exchange(base_a, initiator_session, owner_session, agreement_id, initiat
         payload = request(base_a+f"/agreements/{agreement_id}/trade/signing-payload",token=session['accessToken'])
         signature = sign_authorization(private_key, payload['authorizationPayload'])
         trade = request(base_a+f"/agreements/{agreement_id}/trade/authorizations",'POST',{'credentialId':credential_id,'signatureBase64url':signature},session['accessToken'])
-    return request(base_a+f"/agreements/{agreement_id}/trade/commit",'POST',{},owner_session['accessToken'])
+    commit_path = base_a+f"/agreements/{agreement_id}/trade/commit"
+    if fault_plan == 'precommit':
+        fault_once('unavailable_once')
+        request(commit_path,'POST',{},owner_session['accessToken'],expected=503)
+        assert request(base_a+f"/agreements/{agreement_id}/trade",token=owner_session['accessToken'])['executionState'] == 'AWAITING_SIGNATURES'
+        fault_once('timeout_once')
+        request(commit_path,'POST',{},owner_session['accessToken'],expected=503)
+        assert request(base_a+f"/agreements/{agreement_id}/trade",token=owner_session['accessToken'])['executionState'] == 'AWAITING_SIGNATURES'
+    if fault_plan == 'aftercommit':
+        fault_once('drop_after_once')
+        request(commit_path,'POST',{},owner_session['accessToken'],expected=503)
+        return request(base_a+f"/agreements/{agreement_id}/trade/sync",'POST',{},owner_session['accessToken'])
+    return request(commit_path,'POST',{},owner_session['accessToken'])
 
 def activate_economic(base_a, session):
     private_key, public_key = new_keypair()
@@ -83,9 +103,11 @@ def activate_economic(base_a, session):
     return private_key, public_key, activation['credentialId']
 
 def main():
+    from urllib.parse import urlparse
+    assert urlparse(os.environ.get('STIR_TEST_URL','http://localhost:8089')).hostname in {'localhost','127.0.0.1'}, 'AUDIT E2E requires a local isolated stack'
     admin = request('/api/shell/v1/auth/login','POST',{'email':'admin@stir.test','password':(ROOT/'.local/secrets/login_password').read_text().strip()})['accessToken']
     suffix = uuid.uuid4().hex[:8]
-    tenant_a = sql(f"select tenant_id from idax_core.tenant_create('stir-eco-a-{suffix}', 'STIR Economic A', 'active', false);")
+    tenant_a = sql(f"select tenant_id from idax_core.tenant_create('audit-high-eco-a-{suffix}', 'AUDIT-High Economic A', 'active', false);")
     role = request(f'/api/shell/v1/tenants/{tenant_a}/roles','POST',{'key':'stir_eco_'+suffix,'name':'STIR economic E2E','description':'Isolated development fixture','enabled':True},admin,expected=(200,201))
     request(f'/api/shell/v1/tenants/{tenant_a}/roles/'+role['id']+'/permissions','PUT',PERMISSIONS,admin)
     ana = make_user(admin, tenant_a, role['id'], 'ana', suffix)
@@ -109,7 +131,7 @@ def main():
     assert agreement['economicPhase'] == 'AWAITING_ECONOMIC_EXECUTION'
     assert amount == 900
 
-    trade = run_exchange(base_a, pedro, ana, agreement['id'], pedro_key, ana_key)
+    trade = run_exchange(base_a, pedro, ana, agreement['id'], pedro_key, ana_key, fault_plan='precommit')
     assert trade['executionState'] == 'COMMITTED', trade
     assert trade['amount'] == '900'
     assert trade['payerUserId'] == pedro['user']['id'] and trade['payeeUserId'] == ana['user']['id']
@@ -146,9 +168,13 @@ def main():
     # --- WANTED direction: Ana needs bicycle repair, Pedro proposes 500, Ana accepts directly ---
     wanted_agreement, wanted_amount = open_and_accept(base_a, ana, pedro, 'WANTED', 'Need bicycle repair '+suffix, 'general', 500, None)
     assert wanted_agreement['economicPhase'] == 'AWAITING_ECONOMIC_EXECUTION'
-    wanted_trade = run_exchange(base_a, pedro, ana, wanted_agreement['id'], pedro_key, ana_key)
+    wanted_trade = run_exchange(base_a, pedro, ana, wanted_agreement['id'], pedro_key, ana_key, fault_plan='aftercommit')
     assert wanted_trade['executionState'] == 'COMMITTED'
     assert wanted_trade['payerUserId'] == ana['user']['id'] and wanted_trade['payeeUserId'] == pedro['user']['id']
+    assert request(base_a+f"/agreements/{wanted_agreement['id']}/trade/commit",'POST',{},ana['accessToken'])['committedSequence'] == wanted_trade['committedSequence']
+    wanted_journal_rows = sql(f"begin; set local role idax_app; select set_config('app.tenant_id','{tenant_a}',true);"
+        f" select count(*) from ostris.journal_transaction where tenant_id='{tenant_a}' and id='{wanted_trade['transactionId']}'; rollback;", runtime=True).splitlines()[-2]
+    assert wanted_journal_rows == '1', wanted_journal_rows
     ana_final = request(base_a+'/economic/me',token=ana['accessToken'])
     pedro_final = request(base_a+'/economic/me',token=pedro['accessToken'])
     assert int(ana_final['balanceProjection']) == int(ana_after['balanceProjection']) - 500, ana_final
@@ -172,10 +198,9 @@ def main():
     pedro_unaffected = request(base_a+'/economic/me',token=pedro['accessToken'])
     assert ana_unaffected['balanceProjection'] == ana_final['balanceProjection'], "a rejected commit must never move a balance"
     assert pedro_unaffected['balanceProjection'] == pedro_final['balanceProjection'], "a rejected commit must never move a balance"
-    rejected_journal_rows = sql(f"begin; set local role idax_app; select set_config('app.tenant_id','{tenant_a}',true);"
-        f" select count(*) from ostris.journal_transaction where tenant_id='{tenant_a}' and id='{reject_trade['transactionId']}'; rollback;", runtime=True).splitlines()[-2]
-    assert rejected_journal_rows == '0', rejected_journal_rows
-    print('PASS: osTRIS denied a credit-floor commit without journal entry; Agreement stays accepted and execution remains retryable.')
+    assert sql(f"begin; set local role idax_app; select set_config('app.tenant_id','{tenant_a}',true);"
+        f" select count(*) from ostris.journal_transaction where tenant_id='{tenant_a}' and id='{reject_trade['transactionId']}'; rollback;", runtime=True).splitlines()[-2] == '0'
+    print('PASS: credit-floor attempt was denied without a journal entry; Agreement remains accepted and execution stays retryable.')
 
     print('STIR 0.3 ECONOMIC EXCHANGE HTTP E2E: PASS')
 

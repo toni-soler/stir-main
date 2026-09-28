@@ -1,0 +1,19 @@
+# Opt-in local-only audit overlay. Use an isolated -p project and AUDIT-* fixtures.
+# This routes STIR's osTRIS calls through a one-shot fault injector; never use in production.
+services:
+  stir:
+    environment:
+      OSTRIS_BASE_URL: http://fault-proxy:8095
+    depends_on:
+      fault-proxy:
+        condition: service_started
+  fault-proxy:
+    image: python:3.12-alpine
+    command: [python, /proxy.py]
+    environment:
+      OSTRIS_UPSTREAM: http://ostris:8095
+    volumes:
+      - ./scripts/audit_ostris_fault_proxy.py:/proxy.py:ro
+    ports:
+      - 127.0.0.1:${STIR_AUDIT_FAULT_PORT:-18095}:8095
+    networks: [edge]
