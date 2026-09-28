@@ -1,5 +1,27 @@
 # Changelog
 
+## fix: MinIO registry dead again (quay.io), switched to a maintained fork
+
+The previous fix (switching `minio/minio` from `docker.io` to `quay.io`, 2026-09-24) was
+already obsolete the same day: MinIO Inc. archived the upstream repo (2026-04) and then pulled
+the compiled binaries from both `docker.io` and `quay.io` entirely (2026-09-11 / 2026-09-24) -
+not a registry migration this time, a full retirement of free binary distribution in favor of
+their commercial AIStor product. `quay.io/minio/minio` now returns `401 Unauthorized` on every
+tag, with no anonymous-login workaround (confirmed: authentication credentials for that
+repository are not publicly available at all).
+
+`compose.yml`'s `minio` service now pulls `pgsty/minio` instead - a maintained AGPLv3 fork of
+MinIO CE (github.com/pgsty/minio, the Pigsty project) that continues building and publishing the
+same upstream source after the archival, still anonymously pullable. Verified as a true drop-in
+before switching: runs as root by default and `/data` pre-exists in the image, matching this
+compose file's existing `deploy/run-minio.sh` (`exec minio server /data ...`) exactly, unlike
+`bitnamilegacy/minio` (also tried, rejected - runs as a non-root user with no `/data` directory
+by default, which this compose file's entrypoint override doesn't accommodate). No fork tag
+matches the old pin (`RELEASE.2025-04-08T15-41-24Z`; the fork only republishes from 2026-02
+onward), so this also bumps the running MinIO CE version, not just the registry. Pinned by
+digest rather than tag, since this is a third-party rebuild rather than the official image.
+Verified by bringing the full `docker compose up -d --build` stack up healthy against it.
+
 ## fix: proxy healthcheck always failed in production
 
 `compose.yml`'s `proxy` healthcheck hits `http://localhost:8088/actuator/health/readiness` -

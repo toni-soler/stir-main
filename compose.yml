@@ -107,9 +107,16 @@ services:
     networks: [edge]
   minio:
     logging: *default-logging
-    # docker.io/minio/minio denies anonymous pulls as of this release tag (MinIO moved
-    # distribution to quay.io) - quay.io/minio/minio is the same official image/tag, mirrored.
-    image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+    # Neither docker.io/minio/minio nor quay.io/minio/minio serve anonymous pulls any more -
+    # MinIO Inc. archived the repo (2026-04) and pulled the binaries from both registries
+    # (2026-09-11 / 2026-09-24). pgsty/minio is a maintained AGPLv3 fork (github.com/pgsty/minio,
+    # same upstream MinIO CE source, Pigsty project) rebuilt from the same base, still pullable
+    # anonymously, and confirmed a true drop-in: runs as root by default, /data pre-exists in the
+    # image, same "minio server /data" invocation this compose file already relies on
+    # (deploy/run-minio.sh). No release tag matches our old pin (fork only republishes from
+    # 2026-02 onward), so this is also a MinIO CE version bump, not just a registry swap. Pinned
+    # by digest, not by mutable tag, since this is a third-party rebuild, not the official image.
+    image: pgsty/minio@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     entrypoint: [/bin/sh, /run-minio.sh]
     volumes:
       - ./deploy/run-minio.sh:/run-minio.sh:ro
