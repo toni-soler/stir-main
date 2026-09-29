@@ -36,8 +36,9 @@ execution reach a success branch):
                                                a service/endpoint failure, never treated as CLEAR).
     exit 3 = INVALID_SECURITY_STATUS_RESPONSE - the endpoint responded 2xx, but the body is not one
                                                of the exactly two coherent payloads above: missing/
-                                               null/unrecognized securityState, missing/null/non-
-                                               integer/boolean/negative openIncidentCount, a count
+                                               null/non-string/unrecognized securityState (including
+                                               a JSON array or object, per P1-R5-001), missing/null/
+                                               non-integer/boolean/negative openIncidentCount, a count
                                                inconsistent with the declared state (CLEAR with
                                                count>0, CRITICAL with count<1), malformed JSON, a
                                                JSON value that isn't an object, or an empty body.
@@ -101,6 +102,15 @@ def parse_security_status(raw_body: bytes) -> dict:
     if "securityState" not in payload:
         raise InvalidSecurityStatusResponse("missing 'securityState' field")
     state = payload["securityState"]
+    # P1-R5-001 (FIFTH_REVALIDATION_GOVERNED_STATE_AUDIT_PHASE1.md): `state not in VALID_STATES`
+    # performs hash-set membership - a JSON array or object decodes to a Python list/dict, which is
+    # unhashable and raises TypeError there, escaping the InvalidSecurityStatusResponse catch in
+    # poll_once() entirely. That uncaught TypeError crashed the interpreter, which exits 1 by
+    # default - coincidentally EXIT_CRITICAL, so a malformed/adversarial response could look like a
+    # real incident instead of failing closed as exit 3. Must check the type BEFORE any membership
+    # test against the (hashable-only) VALID_STATES set.
+    if not isinstance(state, str):
+        raise InvalidSecurityStatusResponse(f"securityState is not a string: {state!r}")
     if state not in VALID_STATES:
         raise InvalidSecurityStatusResponse(f"unrecognized securityState: {state!r}")
 

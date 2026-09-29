@@ -1,14 +1,20 @@
 """Regression matrix for audit_security_status_probe.py's fail-closed contract (P1-R4-001,
-FOURTH_REVALIDATION_GOVERNED_STATE_AUDIT_PHASE1.md). Stdlib-only, no external test framework.
+FOURTH_REVALIDATION_GOVERNED_STATE_AUDIT_PHASE1.md; P1-R5-001,
+FIFTH_REVALIDATION_GOVERNED_STATE_AUDIT_PHASE1.md). Stdlib-only, no external test framework.
 
 Run directly: python scripts/test_audit_security_status_probe.py
 """
 import http.server
 import json
+import pathlib
+import subprocess
+import sys
 import threading
 import unittest
 
 import audit_security_status_probe as probe
+
+_SCRIPT_PATH = pathlib.Path(__file__).parent / "audit_security_status_probe.py"
 
 
 class _CannedHandler(http.server.BaseHTTPRequestHandler):
@@ -74,6 +80,28 @@ class SecurityStatusProbeContractTest(unittest.TestCase):
     def test_missing_state_exits_invalid(self):
         self._assert_exit(200, json.dumps({"openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
 
+    # ----- P1-R5-001: `state not in VALID_STATES` is hash-set membership, which raises an
+    # uncaught TypeError for an unhashable JSON type (list/dict) - escaping the
+    # InvalidSecurityStatusResponse catch entirely and crashing with Python's default exit code 1,
+    # coincidentally EXIT_CRITICAL, instead of the mandated exit 3. These are the exact
+    # reproductions from FIFTH_REVALIDATION_GOVERNED_STATE_AUDIT_PHASE1.md plus the remediation
+    # order's required scalar-type variants. -----
+
+    def test_array_state_exits_invalid_not_critical(self):
+        self._assert_exit(200, json.dumps({"securityState": [], "openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
+
+    def test_object_state_exits_invalid_not_critical(self):
+        self._assert_exit(200, json.dumps({"securityState": {}, "openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
+
+    def test_integer_state_exits_invalid(self):
+        self._assert_exit(200, json.dumps({"securityState": 1, "openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
+
+    def test_boolean_state_exits_invalid(self):
+        self._assert_exit(200, json.dumps({"securityState": True, "openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
+
+    def test_null_state_exits_invalid(self):
+        self._assert_exit(200, json.dumps({"securityState": None, "openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
+
     def test_clear_with_positive_count_exits_invalid(self):
         self._assert_exit(200, json.dumps({"securityState": "CLEAR", "openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
 
@@ -112,6 +140,51 @@ class SecurityStatusProbeContractTest(unittest.TestCase):
         # A well-formed CLEAR body behind a 503 must still never read as CLEAR - the endpoint
         # itself failed to serve a status, which is the condition that matters here.
         self._assert_exit(503, json.dumps({"securityState": "CLEAR", "openIncidentCount": 0}), probe.EXIT_UNREACHABLE)
+
+
+class SecurityStatusProbeCliContractTest(unittest.TestCase):
+    """P1-R5-001's own reproduction ran the REAL CLI as a subprocess, not an in-process call - and
+    that distinction is exactly why the bug was invisible to a purely in-process test: an uncaught
+    TypeError from `state not in VALID_STATES` (unhashable list/dict) propagates out of poll_once()
+    and, in-process, would simply fail/error the calling test method - it never gets the chance to
+    demonstrate what the OS-visible *process exit code* actually was. Only a real subprocess
+    invocation shows the exit code a scheduler/cron/systemd-timer would actually observe (Python's
+    interpreter exits 1 by default for an uncaught exception, coincidentally EXIT_CRITICAL - the
+    exact false-positive this finding is about). These tests drive the packaged script exactly as
+    an external monitor would."""
+
+    def _assert_cli_exit(self, status: int, body: str, expected_exit: int):
+        url, stop = _serve(status, body)
+        try:
+            result = subprocess.run(
+                [sys.executable, str(_SCRIPT_PATH), "--url", url, "--timeout", "2"],
+                capture_output=True, text=True, timeout=10,
+            )
+            self.assertEqual(expected_exit, result.returncode,
+                f"status={status} body={body!r} stdout={result.stdout!r} stderr={result.stderr!r}")
+            # An uncaught exception before the fix prints a Python traceback to stderr, not the
+            # probe's own diagnostic line - assert there is none, not just that the exit code
+            # happens to match by coincidence.
+            self.assertNotIn("Traceback", result.stderr, f"the CLI must never crash with an uncaught exception: {result.stderr}")
+        finally:
+            stop()
+
+    def test_array_state_via_real_cli_exits_invalid_not_critical(self):
+        self._assert_cli_exit(200, json.dumps({"securityState": [], "openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
+
+    def test_object_state_via_real_cli_exits_invalid_not_critical(self):
+        self._assert_cli_exit(200, json.dumps({"securityState": {}, "openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
+
+    def test_unknown_state_via_real_cli_exits_invalid(self):
+        # The original P1-R4-001 reproduction, re-driven through the real CLI as a sanity check
+        # that this file's in-process tests and the real subprocess agree.
+        self._assert_cli_exit(200, json.dumps({"securityState": "UNKNOWN", "openIncidentCount": 1}), probe.EXIT_INVALID_RESPONSE)
+
+    def test_clear_via_real_cli_exits_clear(self):
+        self._assert_cli_exit(200, json.dumps({"securityState": "CLEAR", "openIncidentCount": 0}), probe.EXIT_CLEAR)
+
+    def test_critical_via_real_cli_exits_critical(self):
+        self._assert_cli_exit(200, json.dumps({"securityState": "CRITICAL_SECURITY_INCIDENT", "openIncidentCount": 1}), probe.EXIT_CRITICAL)
 
 
 if __name__ == "__main__":
