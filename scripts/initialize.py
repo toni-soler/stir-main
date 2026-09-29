@@ -44,7 +44,7 @@ def main():
     secret_dir = ROOT / '.local/secrets'
     secret_dir.mkdir(parents=True, exist_ok=True)
     if os.name != 'nt': secret_dir.chmod(0o700)
-    for name in ['postgres_password', 'bootstrap_token', 'login_password', 'runtime_password', 'storage_access_key', 'storage_secret_key']:
+    for name in ['postgres_password', 'bootstrap_token', 'login_password', 'runtime_password', 'storage_access_key', 'storage_secret_key', 'stir_auditor_password']:
         p = secret_dir / name
         if not p.exists(): p.write_text(secrets.token_urlsafe(36), encoding='utf-8')
         # 0644, not 0600: Docker Compose (non-Swarm) `secrets:` bind-mounts this exact host file

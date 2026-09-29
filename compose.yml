@@ -50,6 +50,41 @@ services:
     depends_on:
       module-migrations: {condition: service_completed_successfully}
     networks: [data]
+  audit-provision:
+    logging: *default-logging
+    # TAMPER-EVIDENT GOVERNED STATE AUDIT MVP (Phase 1, GOVERNED_STATE_AUDIT_ARCHITECTURE.md /
+    # CLAUDE_GOVERNED_STATE_AUDIT_ORDERS.md): sets stir_auditor's password from its own secret,
+    # mirroring runtime-provision exactly for a different role - postgres remains the migrator,
+    # stir_auditor's credential never touches backend/Shell/extensions.
+    image: postgres:17-alpine
+    entrypoint: [/bin/sh, /provision.sh]
+    volumes: [./deploy/provision-audit.sh:/provision.sh:ro]
+    secrets: [postgres_password, stir_auditor_password]
+    depends_on:
+      module-migrations: {condition: service_completed_successfully}
+    networks: [data]
+  stir-audit-verifier:
+    logging: *default-logging
+    build: ../stir-backend/audit-verifier
+    environment:
+      STIR_AUDITOR_JDBC_URL: jdbc:postgresql://postgres:5432/idax
+      STIR_AUDITOR_USER: stir_auditor
+      STIR_AUDITOR_PASSWORD_FILE: /run/secrets/stir_auditor_password
+      STIR_AUDITOR_POLL_INTERVAL_MS: "2000"
+      STIR_AUDITOR_HEALTH_PORT: "9090"
+    secrets: [stir_auditor_password]
+    depends_on:
+      audit-provision: {condition: service_completed_successfully}
+    # data only - never edge. The verifier has no public HTTP API and does not need to be
+    # reachable from outside the compose network; a separate operator/monitor reaches its health
+    # endpoint by exec-ing into the network or via `docker compose exec`, not a published port, in
+    # this Phase 1 dev-stack shape.
+    networks: [data]
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://localhost:9090/health']
+      interval: 10s
+      timeout: 5s
+      retries: 40
   shell:
     logging: *default-logging
     build:
@@ -216,3 +251,4 @@ secrets:
   runtime_password: {file: ./.local/secrets/runtime_password}
   storage_access_key: {file: ./.local/secrets/storage_access_key}
   storage_secret_key: {file: ./.local/secrets/storage_secret_key}
+  stir_auditor_password: {file: ./.local/secrets/stir_auditor_password}
