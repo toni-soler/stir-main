@@ -112,7 +112,9 @@ if [ "$STAGE" != empty ]; then
   args=""
   while read -r table; do args="$args -t $table"; done < "$OUT/staged-tables.txt"
   # --disable-triggers: the seeded rows are copies of an already-audited history; the audit chain is verified on the stack, not here
-  docker exec "$SOURCE" pg_dump -U postgres -d idax --data-only --disable-triggers --no-owner $args > "$OUT/staged-data.sql"
+  # --on-conflict-do-nothing: the core and module migrations already create some reference rows (for example the
+  # system app_user), which must not be duplicated by the copy
+  docker exec "$SOURCE" pg_dump -U postgres -d idax --data-only --disable-triggers --inserts --on-conflict-do-nothing --no-owner $args > "$OUT/staged-data.sql" 2> "$OUT/staged-dump.log"
   docker exec -i "$RUN" psql -X -v ON_ERROR_STOP=1 -q -U postgres -d idax < "$OUT/staged-data.sql" > "$OUT/staged-load.log" 2>&1
 fi
 
@@ -136,7 +138,9 @@ FAIL=0
   # no table may lose rows (rows lines are: rows <schema.table> <count>)
   lost=$(awk 'NR==FNR{b[$2]=$3;next} {if(($2 in b) && $3+0 < b[$2]+0) print "LOST "$2" "b[$2]" -> "$3}' "$OUT/before-rows.txt" "$OUT/after-rows.txt")
   if [ -n "$lost" ]; then echo "$lost"; echo "ROW_LOSS=FAIL"; FAIL=1; else echo "ROW_LOSS=NONE"; fi
-  changed=$(diff <(sed 's/ [0-9]*$//' "$OUT/before-content.txt" | sort) <(sed 's/ [0-9]*$//' "$OUT/after-content.txt" | sort) | grep '^[<>]' | wc -l || true)
+  sort "$OUT/before-content.txt" > "$OUT/bc.sorted"; sort "$OUT/after-content.txt" > "$OUT/ac.sorted"
+  changed=$(diff "$OUT/bc.sorted" "$OUT/ac.sorted" | grep -c '^[<>]' || true)
+  rm -f "$OUT/bc.sorted" "$OUT/ac.sorted"
   echo "CONTENT_LINES_DIFFERING=$changed (expected only for tables whose structure changed after the staged version)"
   diff "$OUT/before-grants.txt" "$OUT/after-grants.txt" > "$OUT/grants.diff" || true
   echo "GRANT_DIFF_LINES=$(wc -l < "$OUT/grants.diff")"
