@@ -1,0 +1,8 @@
+# Release storage: SILO, built from source at pgsty/silo commit 2a4d51406b7e (RELEASE.2026-09-16T00-00-00Z)
+# on the DEV VM. The binary is byte-identical to the previously validated image (sha256 of /usr/bin/silo
+# matches). Replaces the third-party pgsty/minio image; service name, volume, secrets, healthcheck and
+# entrypoint are unchanged. pull_policy never: the image is a local immutable build, never fetched.
+services:
+  minio:
+    image: stir-claude/silo:RELEASE.2026-09-16T00-00-00Z-claude-1
+    pull_policy: never
