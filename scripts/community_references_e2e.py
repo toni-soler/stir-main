@@ -25,6 +25,9 @@ def fixtures():
     publisher=role(tenant,'publisher',MEMBER+['stir.references.publish'])
     b_role=role(other,'other',MEMBER)
     ana=make_user(admin,tenant,publisher,'ana',suffix)
+    # Community bootstrap authority is tenant owner/admin while Ordinary Governance is disabled; a custom
+    # publisher role alone is platform permission, not community authority. Ana is the tenant administrator.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{ana['user']['id']}';")
     pedro=make_user(admin,tenant,member,'pedro',suffix)
     carlos=make_user(admin,tenant,member,'carlos',suffix)
     bea=make_user(admin,other,b_role,'bea',suffix)
