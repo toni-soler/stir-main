@@ -5,7 +5,6 @@ Routing is not authorization: the verifier has to reject these by itself. Dispos
 """
 import base64
 import json
-import os
 import re
 import subprocess
 import uuid
@@ -39,15 +38,8 @@ def attack(path, body, token=None):
     return int(statuses[-1]) if statuses else 0
 
 
-# STIR_GOVERNED_DISCOVERY=1 records the real status of each attack without asserting it (used once to pin statuses).
-DISCOVERY = os.environ.get('STIR_GOVERNED_DISCOVERY') == '1'
-
-
 def expect_rejected(name, path, body, token=None, expected=None):
     status = attack(path, body, token)
-    if DISCOVERY:
-        print(f'OBSERVED: {name} -> {status}')
-        return status
     assert expected is not None, name
     assert status == expected, f'{name}: expected exactly {expected}, got {status}'
     print(f'PASS: {name} -> {status}')
@@ -84,18 +76,18 @@ def constitutional_mutation_matrix(tenant, api, community, authority, token, key
     for seat in range(1, 7):
         request(sign_path(p), 'POST', sig(p, seat, keys[seat - 1]), token)
 
-    expect_rejected('exact 6-of-7 valid signatures cannot activate', activate_path(p), empty, token, expected=None)
-    expect_rejected('duplicate signature by an already-signed seat', sign_path(p), sig(p, 1, keys[0]), token, expected=None)
+    expect_rejected('exact 6-of-7 valid signatures cannot activate', activate_path(p), empty, token, expected=409)
+    expect_rejected('duplicate signature by an already-signed seat', sign_path(p), sig(p, 1, keys[0]), token, expected=409)
     expect_rejected('wrong community: seat 7 signs a payload naming another community', sign_path(p),
-                    sig(p, 7, keys[6], payload={**payload, 'communityId': str(uuid.uuid4())}), token, expected=None)
+                    sig(p, 7, keys[6], payload={**payload, 'communityId': str(uuid.uuid4())}), token, expected=400)
     expect_rejected('wrong domain: seat 7 signs under the Guardian domain', sign_path(p),
-                    sig(p, 7, keys[6], domain=GUARDIAN), token, expected=None)
+                    sig(p, 7, keys[6], domain=GUARDIAN), token, expected=400)
     expect_rejected('modified payload: seat 7 signs a tampered reason', sign_path(p),
-                    sig(p, 7, keys[6], payload={**payload, 'reason': 'tampered'}), token, expected=None)
+                    sig(p, 7, keys[6], payload={**payload, 'reason': 'tampered'}), token, expected=400)
     expect_rejected('Guardian counted as constitutional seat 7', sign_path(p),
-                    dict(seatOrdinal=7, credentialId=guardian_id, signatureBase64url=sign(guardian, DOMAIN, payload)), token, expected=None)
+                    dict(seatOrdinal=7, credentialId=guardian_id, signatureBase64url=sign(guardian, DOMAIN, payload)), token, expected=409)
     expect_rejected('unknown credential presented for seat 7', sign_path(p),
-                    sig(p, 7, keys[6], credential=str(uuid.uuid4())), token, expected=None)
+                    sig(p, 7, keys[6], credential=str(uuid.uuid4())), token, expected=409)
     assert effective_constitution(tenant) == before, 'a rejected constitutional attack changed effective state'
 
     events_before = len(request(api + '/' + community + '/events', token=token))
@@ -107,8 +99,8 @@ def constitutional_mutation_matrix(tenant, api, community, authority, token, key
     assert request(api + '/' + community, token=token)['constitutionVersion'] == 2
     print('PASS: legitimate 7-of-7 constitutional mutation after bootstrap, effective state changed exactly once')
 
-    expect_rejected('replay of the executed mutation cannot change state again', activate_path(p), empty, token, expected=None)
-    expect_rejected('replay of a signature for the executed proposal', sign_path(p), sig(p, 7, keys[6]), token, expected=None)
+    expect_rejected('replay of the executed mutation cannot change state again', activate_path(p), empty, token, expected=409)
+    expect_rejected('replay of a signature for the executed proposal', sign_path(p), sig(p, 7, keys[6]), token, expected=409)
     assert effective_constitution(tenant) == after, 'replay changed effective constitutional state'
 
     events_after = request(api + '/' + community + '/events', token=token)
@@ -125,13 +117,13 @@ def constitutional_mutation_matrix(tenant, api, community, authority, token, key
     expect_rejected('stale sequence on a Guardian suspension', api + '/' + community + '/emergency-suspensions',
                     dict(seatOrdinal=4, credentialId=credentials[3], expectedSequence=sequence - 1, declaredAt=declared,
                          reasonCode='KEY_COMPROMISED', evidenceRefs=['incident-1'],
-                         guardianSignature=sign(guardian, GUARDIAN, suspension)), token, expected=None)
+                         guardianSignature=sign(guardian, GUARDIAN, suspension)), token, expected=409)
     suspension['sequence'] = sequence
     request(api + '/' + community + '/emergency-suspensions', 'POST', dict(seatOrdinal=4, credentialId=credentials[3],
             expectedSequence=sequence, declaredAt=declared, reasonCode='KEY_COMPROMISED', evidenceRefs=['incident-1'],
             guardianSignature=sign(guardian, GUARDIAN, suspension)), token)
     later = propose({**changed, 'concentrationChecksRequired': False}, ['concentrationChecksRequired'])
-    expect_rejected('suspended credential of seat 4 cannot sign', sign_path(later), sig(later, 4, keys[3]), token, expected=None)
+    expect_rejected('suspended credential of seat 4 cannot sign', sign_path(later), sig(later, 4, keys[3]), token, expected=409)
     print('COMPLETE: constitutional mutation matrix executed')
 
 
