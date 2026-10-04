@@ -99,9 +99,10 @@ def main():
 
     # --- 8-12: Community Seed through Ordinary Governance ---
     gov = base + '/references/governance/ordinary'
-    request(gov + '/settings/' + community, 'PUT', {'enabled': True}, a)
+    # The roster must hold an active member before governance can be enabled (fail-closed), so members first.
     for member in (ana, pedro, carlos):
         request(gov + '/members/' + community + '/' + member['user']['id'], 'POST', {}, a)
+    request(gov + '/settings/' + community, 'PUT', {'enabled': True}, a)
     request(gov + '/policy/' + community, 'POST', {'quorumNumerator': 1, 'quorumDenominator': 2, 'approvalNumerator': 2,
         'approvalDenominator': 3, 'votingWindowHours': 1, 'abstentionRule': 'COUNTS_TOWARD_QUORUM_NOT_APPROVAL',
         'explanation': 'v0.1'}, a)

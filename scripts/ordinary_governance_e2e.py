@@ -69,9 +69,10 @@ def main():
     request(base+'/references/proposals/'+legacy_proposal['id']+'/publish', 'POST', {'decision': 'Legacy delegated publish'}, m)
 
     # --- Enable ordinary governance; build the electorate ---
-    request(gov+'/settings/'+community, 'PUT', {'enabled': True}, m)
+    # The roster must hold an active member before governance can be enabled (fail-closed), so members first.
     for voter in [manager_id] + [v['user']['id'] for v in voters]:
         request(gov+'/members/'+community+'/'+voter, 'POST', {}, m, 200)
+    request(gov+'/settings/'+community, 'PUT', {'enabled': True}, m)
     request(gov+'/policy/'+community, 'POST', {'quorumNumerator': 1, 'quorumDenominator': 2, 'approvalNumerator': 2,
         'approvalDenominator': 3, 'votingWindowHours': 1, 'abstentionRule': 'COUNTS_TOWARD_QUORUM_NOT_APPROVAL',
         'explanation': 'v0.1 initial policy'}, m)
