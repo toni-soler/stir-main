@@ -68,6 +68,9 @@ def main():
     request(shell+'/roles/'+reviewer_role['id']+'/permissions', 'PUT',
         MEMBER + ['stir.references.publish', 'OSTRIS_IDENTITY_CONTINUITY_READ_PRIVATE'], admin)
     reviewer = make_user(admin, tenant, reviewer_role['id'], 'reviewer', tenant[:8])
+    # Independence refresh is a community-authority mutation (ParticipantIndependenceService): while
+    # Ordinary Governance is disabled that authority is tenant owner/admin, never a custom permission role.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{reviewer['user']['id']}';")
     a = reviewer['accessToken']
 
     # --- No economic account bound yet: never invented, never a live osTRIS call for this one ---
