@@ -95,7 +95,7 @@ snapshot() {
   psql_run -c "select 'member '||m.rolname||' of '||g.rolname from pg_auth_members a join pg_roles m on m.oid=a.member join pg_roles g on g.oid=a.roleid order by 1" > "$OUT/$name-members.txt"
   psql_run -c "select 'audit '||case when to_regclass('stir_audit.mutation_event') is null then 'absent' else
     (xpath('/row/c/text()', query_to_xml('select count(*) as c from stir_audit.mutation_event', false, true, '')))[1]::text end" > "$OUT/$name-audit.txt"
-  psql_run -c "select 'schema_history '||coalesce(max(version),'none') from stir.flyway_schema_history where success" > "$OUT/$name-stir-version.txt" 2>/dev/null || echo "schema_history none" > "$OUT/$name-stir-version.txt"
+  psql_run -c "select 'schema_history '||version from stir.flyway_schema_history where success order by installed_rank desc limit 1" > "$OUT/$name-stir-version.txt" 2>/dev/null || echo "schema_history none" > "$OUT/$name-stir-version.txt"
 }
 
 # 3. staged realistic rows copied from the validated stack
@@ -156,7 +156,11 @@ esac
 verifier_member=$(psql_run -c "select count(*) from pg_auth_members a join pg_roles m on m.oid=a.member join pg_roles g on g.oid=a.roleid where g.rolname='idax_governed_verifier'")
 echo "ANY_MEMBER_OF_VERIFIER=$verifier_member" >> "$OUT/evaluation.txt"
 [ "$verifier_member" = "0" ] || FAIL=1
-grep -q "^role idax_governed_verifier login=f inherit=f bypassrls=f" "$OUT/after-roles.txt" || { echo "VERIFIER_ROLE_ATTRIBUTES=UNEXPECTED" >> "$OUT/evaluation.txt"; FAIL=1; }
+if grep -q "^role idax_governed_verifier login=t inherit=f bypassrls=f super=f createrole=f" "$OUT/after-roles.txt"; then
+  echo "VERIFIER_ROLE_ATTRIBUTES=AS_EXPECTED (NOINHERIT, NOBYPASSRLS, NOSUPERUSER, NOCREATEROLE)" >> "$OUT/evaluation.txt"
+else
+  echo "VERIFIER_ROLE_ATTRIBUTES=UNEXPECTED" >> "$OUT/evaluation.txt"; FAIL=1
+fi
 
 rm -f "$OUT/t.sorted" "$OUT/s.sorted" "$OUT/staged-data.sql"
 echo "finished=$(date -u +%FT%TZ)" >> "$OUT/meta.txt"
