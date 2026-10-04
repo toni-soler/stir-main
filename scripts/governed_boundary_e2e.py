@@ -38,9 +38,10 @@ def attack(path, body, token=None):
     return int(statuses[-1]) if statuses else 0
 
 
-def expect_rejected(name, path, body, token=None):
+def expect_rejected(name, path, body, token=None, expected=None):
     status = attack(path, body, token)
-    assert status >= 400, f'{name}: verifier accepted a forged request (status {status})'
+    assert expected is not None, name
+    assert status == expected, f'{name}: expected exactly {expected}, got {status}'
     print(f'PASS: {name} -> {status}')
 
 
@@ -88,28 +89,28 @@ def main():
 
     # Forged caller claims sent straight to the verifier.
     expect_rejected('forged actorId: a plain user asserts the administrator as actor', api + '/bootstrap',
-                    {**creation, 'actorId': str(ana['user']['id'])}, pedro['accessToken'])
+                    {**creation, 'actorId': str(ana['user']['id'])}, pedro['accessToken'], expected=400)
     expect_rejected('valid JWT of a plain tenant user without bootstrap authority', api + '/bootstrap',
-                    creation, pedro['accessToken'])
+                    creation, pedro['accessToken'], expected=403)
     expect_rejected('forged tenant: administrator token used on another tenant path',
-                    f'/api/stir/tenants/{other_tenant}/references/governance/bootstrap', creation, ana['accessToken'])
+                    f'/api/stir/tenants/{other_tenant}/references/governance/bootstrap', creation, ana['accessToken'], expected=403)
     expect_rejected('unsigned token (alg none)', api + '/bootstrap', creation,
-                    b64(json.dumps({'alg': 'none'}).encode()) + '.' + b64(json.dumps({'sub': 'ana'}).encode()) + '.')
+                    b64(json.dumps({'alg': 'none'}).encode()) + '.' + b64(json.dumps({'sub': 'ana'}).encode()) + '.', expected=401)
     rogue = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     header = b64(json.dumps({'alg': 'RS256', 'typ': 'JWT'}).encode())
     claims = b64(json.dumps({'sub': 'ana', 'userId': str(ana['user']['id']), 'tenantId': tenant,
                              'roles': ['admin'], 'iss': 'idax-local'}).encode())
     forged_sig = b64(rogue.sign(f'{header}.{claims}'.encode(), padding.PKCS1v15(), hashes.SHA256()))
     expect_rejected('JWT signed with a key the verifier does not trust', api + '/bootstrap', creation,
-                    f'{header}.{claims}.{forged_sig}')
+                    f'{header}.{claims}.{forged_sig}', expected=401)
     expect_rejected('fabricated verification flags (sevenKeysVerified, authorized, final)', api + '/bootstrap',
-                    {**creation, 'sevenKeysVerified': True, 'authorized': True, 'final': True}, ana['accessToken'])
+                    {**creation, 'sevenKeysVerified': True, 'authorized': True, 'final': True}, ana['accessToken'], expected=400)
     expect_rejected('six seats instead of seven', api + '/bootstrap',
-                    {**creation, 'seats': creation['seats'][:6]}, ana['accessToken'])
+                    {**creation, 'seats': creation['seats'][:6]}, ana['accessToken'], expected=400)
     expect_rejected('duplicate seat ordinal', api + '/bootstrap',
-                    {**creation, 'seats': creation['seats'][:6] + [creation['seats'][0]]}, ana['accessToken'])
+                    {**creation, 'seats': creation['seats'][:6] + [creation['seats'][0]]}, ana['accessToken'], expected=409)
     expect_rejected('replay of a completed bootstrap (no replacement path)', api + '/bootstrap',
-                    creation, ana['accessToken'])
+                    creation, ana['accessToken'], expected=409)
 
     assert effective_constitution(tenant) == legit, 'a forged request changed the effective constitution'
     print('PASS: no forged request created, replaced or altered effective constitutional state')
