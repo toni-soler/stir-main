@@ -17,7 +17,7 @@
       "note": "Frontend UI unchanged since 9fb2211; only the node test script changed (glob instead of directory)."
     },
     "stir-doc": {
-      "commit": "see release/RELEASE_CANDIDATE_EVIDENCE.md",
+      "commit": "edf06be (branch claude/governed-state-effectivity-boundary, local; not pushed)",
       "note": "Validation record for this release candidate."
     }
   },
