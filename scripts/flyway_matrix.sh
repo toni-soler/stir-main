@@ -156,7 +156,7 @@ esac
 verifier_member=$(psql_run -c "select count(*) from pg_auth_members a join pg_roles m on m.oid=a.member join pg_roles g on g.oid=a.roleid where g.rolname='idax_governed_verifier'")
 echo "ANY_MEMBER_OF_VERIFIER=$verifier_member" >> "$OUT/evaluation.txt"
 [ "$verifier_member" = "0" ] || FAIL=1
-if grep -q "^role idax_governed_verifier login=t inherit=f bypassrls=f super=f createrole=f" "$OUT/after-roles.txt"; then
+if grep -q "^role idax_governed_verifier login=true inherit=false bypassrls=false super=false createrole=false" "$OUT/after-roles.txt"; then
   echo "VERIFIER_ROLE_ATTRIBUTES=AS_EXPECTED (NOINHERIT, NOBYPASSRLS, NOSUPERUSER, NOCREATEROLE)" >> "$OUT/evaluation.txt"
 else
   echo "VERIFIER_ROLE_ATTRIBUTES=UNEXPECTED" >> "$OUT/evaluation.txt"; FAIL=1
