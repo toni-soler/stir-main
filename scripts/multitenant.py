@@ -154,8 +154,9 @@ def main():
     print('RLS enabled/forced:',table)
     print('Policies:',sql("select policyname,roles,cmd,qual,with_check from pg_policies where schemaname='stir' order by tablename,policyname;",runtime=True))
     runtime_sessions=sql("select distinct usename from pg_stat_activity where datname='idax' and backend_type='client backend' and application_name='PostgreSQL JDBC Driver';")
-    # Exactly the two expected process identities: the ordinary runtime and the governed verifier.
-    assert set(runtime_sessions.splitlines())=={'idax_backend','idax_governed_verifier'},runtime_sessions
+    # Exactly the expected process identities: the ordinary runtime, the governed verifier, and the audit verifier's
+    # own read-only credential (stir_auditor, V18). Any other JDBC identity is a boundary failure.
+    assert set(runtime_sessions.splitlines())=={'idax_backend','idax_governed_verifier','stir_auditor'},runtime_sessions
     print('Live JDBC session identities:',runtime_sessions)
     count=sql('select count(*) from stir.listing;',runtime=True);assert count=='0',count
     for role in ['idax_app','idax_admin']:
