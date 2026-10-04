@@ -65,7 +65,10 @@ def main():
     controllers = [str(uuid.uuid4()) for _ in keys]
     guardian_id = str(uuid.uuid4())
     seats = [dict(ordinal=i + 1, controllerId=controllers[i], credentialId=credentials[i], publicKey=rawkey(keys[i])) for i in range(7)]
-    constitution = dict(schema='STIR-MARKET-CONSTITUTION-1', constitutionalThreshold=7, guardianMayGovern=False)
+    constitution = dict(schema='STIR-MARKET-CONSTITUTION-1', provenanceRequired=True, historyImmutable=True,
+                        independenceChecksRequired=True, concentrationChecksRequired=True, minimumObservationFloor=5,
+                        minimumParticipantFloor=6, maximumParticipantShareCeiling='0.50', guardianMayGovern=False,
+                        constitutionalThreshold=7)
     bootstrap = dict(format='STIR-SEVEN-KEYS-BOOTSTRAP-1', tenantId=tenant, communityId=community, authorityId=authority,
                      seats=seats, guardianCredentialId=guardian_id, guardianPublicKey=rawkey(guardian),
                      constitutionDigest=digest(constitution))
