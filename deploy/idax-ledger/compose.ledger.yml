@@ -72,6 +72,9 @@ services:
       IDAX_MODULE_MIGRATIONS_ENABLED: "false"
       JAVA_TOOL_OPTIONS: -Xmx512m
       IDAX_LEDGER_AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/jwt_public_key
+      # Service tokens (ostris-ledger-delivery) are verified with the dedicated SERVICE public key, never with the user key.
+      IDAX_SERVICE_AUTH_ISSUER: idax-service
+      IDAX_SERVICE_AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/service_public_key.pem
       IDAX_SERVICE_AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/jwt_public_key
       IDAX_LEDGER_PRIVATE_ENABLED: "true"
       IDAX_LEDGER_PRIVATE_NETWORK_ID: "2181844733"

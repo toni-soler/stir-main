@@ -1,0 +1,29 @@
+# STIR side of the IDAX Ledger integration (DEV). Applied on top of compose.yml, compose.release.yml and
+# compose.release-images.yml. It does NOT belong to the XRPL project: STIR only reaches the ledger API over the
+# dedicated platform network that the idax-ledger-dev project creates. Nothing here touches XRPL.
+#
+#   docker compose -p stir-dev -f compose.yml -f compose.release.yml -f deploy/compose.release-images.yml \
+#     -f deploy/idax-ledger/compose.stir-ledger.yml up -d --wait
+services:
+  shell:
+    environment:
+      # The platform issues SERVICE tokens only when enabled; the signing key is dedicated (not the user JWT key).
+      IDAX_SERVICE_AUTH_ISSUER_ENABLED: "true"
+      IDAX_SERVICE_AUTH_ISSUER: idax-service
+      IDAX_SERVICE_AUTH_PRIVATE_KEY_LOCATION: file:/run/secrets/service_private_key
+    secrets: [service_private_key]
+  ostris:
+    environment:
+      OSTRIS_LEDGER_ENABLED: "true"
+      OSTRIS_LEDGER_BASE_URL: http://idax-ledger-dev-ledger:8094
+      OSTRIS_PLATFORM_BASE_URL: http://shell:8080
+      OSTRIS_LEDGER_SERVICE_CLIENT_SECRET_FILE: /run/secrets/ostris_ledger_client_secret
+    secrets: [ostris_ledger_client_secret]
+    networks: [edge, data, ledger-platform]
+networks:
+  ledger-platform:
+    name: idax-ledger-dev-platform
+    external: true
+secrets:
+  service_private_key: {file: ./.local/secrets/service_private_key}
+  ostris_ledger_client_secret: {file: ./.local/secrets/ostris_ledger_client_secret}
