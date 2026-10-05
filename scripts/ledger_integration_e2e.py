@@ -32,8 +32,9 @@ def main():
     pedro = make_user(admin, tenant, role['id'], 'pedro', suffix)
     request(base + '/participants/me', 'PUT', {'displayName': 'Ana ' + suffix, 'bio': 'Ledger E2E', 'location': 'Girona'}, ana['accessToken'])
     request(base + '/participants/me', 'PUT', {'displayName': 'Pedro ' + suffix, 'bio': 'Ledger E2E', 'location': 'Girona'}, pedro['accessToken'])
+    # Community bootstrap authority is the tenant owner/admin: the demo tenant's own administrator performs it.
     request(base + '/economic/marketplace/bootstrap', 'POST', {'communityName': 'Ledger E2E ' + suffix, 'unitCode': 'LED', 'unitScale': 0},
-            ana['accessToken'], expected=(200, 201, 409))
+            admin, expected=(200, 201, 409))
 
     ana_key = activate_economic(base, ana)
     pedro_key = activate_economic(base, pedro)
