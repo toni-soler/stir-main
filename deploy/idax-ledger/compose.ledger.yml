@@ -75,7 +75,6 @@ services:
       # Service tokens (ostris-ledger-delivery) are verified with the dedicated SERVICE public key, never with the user key.
       IDAX_SERVICE_AUTH_ISSUER: idax-service
       IDAX_SERVICE_AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/service_public_key.pem
-      IDAX_SERVICE_AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/jwt_public_key
       IDAX_LEDGER_PRIVATE_ENABLED: "true"
       IDAX_LEDGER_PRIVATE_NETWORK_ID: "2181844733"
       IDAX_LEDGER_ANCHOR_ACCOUNT: ${IDAX_LEDGER_ANCHOR_ACCOUNT:?set to the anchoring account address}
