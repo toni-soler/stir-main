@@ -14,6 +14,7 @@ from pathlib import Path
 from smoke import request
 from marketplace_e2e import PERMISSIONS
 from economic_exchange_e2e import make_user, activate_economic, open_and_accept, run_exchange
+import secrets
 
 SECRETS = Path(os.environ.get('STIR_LEDGER_SECRETS', Path(__file__).resolve().parents[1] / '.local/secrets'))
 
@@ -28,13 +29,20 @@ def main():
     role = request(f'/api/shell/v1/tenants/{tenant}/roles', 'POST', {'key': 'ledger_e2e_' + suffix, 'name': 'Ledger integration E2E',
                    'description': 'Release fixture', 'enabled': True}, admin, expected=(200, 201))
     request(f'/api/shell/v1/tenants/{tenant}/roles/' + role['id'] + '/permissions', 'PUT', PERMISSIONS, admin)
-    ana = make_user(admin, tenant, role['id'], 'ana', suffix)
+    # Community bootstrap authority is tenant owner/admin (not the platform SuperAdmin, which has no DML under V17).
+    # Ana is therefore created as a tenant administrator through the shell API, with the same permission role as Pedro.
+    ana_email = f'ana-{suffix}@stir.test'
+    ana_password = secrets.token_urlsafe(24)
+    request(f'/api/shell/v1/tenants/{tenant}/users', 'POST', {'email': ana_email, 'displayName': 'ana', 'authProvider': 'local',
+            'subject': ana_email, 'password': ana_password, 'role': 'admin', 'enabled': True}, admin, expected=(200, 201))
+    ana_login = request('/api/shell/v1/auth/login', 'POST', {'email': ana_email, 'password': ana_password})
+    request(f'/api/shell/v1/tenants/{tenant}/roles/users/' + ana_login['user']['id'], 'PUT', {'roleIds': [role['id']]}, admin, 204)
+    ana = request('/api/shell/v1/auth/login', 'POST', {'email': ana_email, 'password': ana_password})
     pedro = make_user(admin, tenant, role['id'], 'pedro', suffix)
     request(base + '/participants/me', 'PUT', {'displayName': 'Ana ' + suffix, 'bio': 'Ledger E2E', 'location': 'Girona'}, ana['accessToken'])
     request(base + '/participants/me', 'PUT', {'displayName': 'Pedro ' + suffix, 'bio': 'Ledger E2E', 'location': 'Girona'}, pedro['accessToken'])
-    # Community bootstrap authority is the tenant owner/admin: the demo tenant's own administrator performs it.
     request(base + '/economic/marketplace/bootstrap', 'POST', {'communityName': 'Ledger E2E ' + suffix, 'unitCode': 'LED', 'unitScale': 0},
-            admin, expected=(200, 201, 409))
+            ana['accessToken'], expected=(200, 201, 409))
 
     ana_key = activate_economic(base, ana)
     pedro_key = activate_economic(base, pedro)
