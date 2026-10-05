@@ -218,21 +218,47 @@
     "executedByClaude": false
   },
   "releasePackage": {
-    "status": "DEV ARCHIVES CREATED; not transferred; not verified after transfer",
-    "location": "DEV VM devstires: ~/stir-release-archives/2026-10-05/ (not in Git)",
+    "status": "FINAL - regenerated from the exact images validated by the live DEV E2E in this phase; the earlier 2026-10-05 archive set (before the service-auth/replay/Dockerfile fixes) is SUPERSEDED and must not be used.",
+    "location": "DEV VM devstires: ~/stir-release-archives/2026-10-05-final/ (not in Git)",
     "archives": {
+      "stir-core-rc.tar": {
+        "sha256": "19a5dd77acc94264693e39cc5118c5dcbffbd4c20f3eadb6ce299de2f1b969f0",
+        "contains": [
+          "core-migrations",
+          "stir",
+          "governed-verifier",
+          "stir-audit-verifier",
+          "stir-ui",
+          "shell",
+          "ostris",
+          "ostris-ui"
+        ]
+      },
       "ledger-xrpl-rc.tar": {
-        "sha256": "5ad134a7dfdb84a9179c80e154827f131dad1b1f0cb888c704ec28ab5d71ff03"
+        "sha256": "69885df9b28c0c6a6afb24f291b6fd97bcb46b3a6c8f1611f52d709437d33bc9",
+        "contains": [
+          "ledger",
+          "ledger-ui",
+          "idax/xrpld:3.3.0-source"
+        ]
       },
       "silo-rc.tar": {
-        "sha256": "11a170c7e978f3df860ac204dd647388941624ec864b0c1a83047986d7fbbf70"
-      },
-      "stir-core-rc.tar": {
-        "sha256": "5a0c23c74446f5a3d872f48ba4b8d1c9dc6627a5f9ba019bd20e0724364bfc6a"
+        "sha256": "11a170c7e978f3df860ac204dd647388941624ec864b0c1a83047986d7fbbf70",
+        "contains": [
+          "stir-claude/silo"
+        ]
       }
     },
-    "contents": "12 release image tags (stir-release/* rc, idax/xrpld:3.3.0-source, stir-claude/silo RELEASE.2026-09-16...)",
-    "excludedByDesign": "validator keys, node keys, anchor seed, JWT private material, DB passwords, client secrets live in runtime secret directories, not in images",
-    "secretScan": "NOT PERFORMED on layer contents; exclusion is by construction (secrets are mounted at runtime, not baked in)"
+    "provenanceFile": "IMAGE_PROVENANCE.txt (same directory) - per-image repository/tag, image id, source repo, source main SHA, archive",
+    "verification": "each archive loaded with `docker load -i` after save; every image's id confirmed identical before and after the round-trip (not just docker save exit 0)",
+    "secretScan": {
+      "status": "PASS",
+      "method": "filename patterns (*.pem, *key*, *secret*, *password*, .env, genesis/validator-keys.json) + PEM private-key header content scan + verbatim check for the real ostris_ledger_client_secret value, across every layer of all three final archives",
+      "result": "no matches"
+    },
+    "sourceMainsVerifiedUnmoved": {
+      "idax-shell": "96f0e08 (ls-remote confirmed)",
+      "ostris": "a402601 (ls-remote confirmed)"
+    }
   }
 }
