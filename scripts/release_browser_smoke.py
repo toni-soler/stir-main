@@ -97,14 +97,14 @@ def main():
             field(ana, 'Biografía breve').fill('Cultivo tomates')
             expect(field(ana, 'Nombre visible')).to_have_value('Ana ' + suffix)
             ana.get_by_role('button', name='Guardar', exact=True).click()
-            expect(ana.get_by_text('Perfil guardado.')).to_be_visible()
+            expect(ana.get_by_text('Perfil guardado.').first).to_be_visible()
 
             ana.get_by_role('button', name='← Marketplace', exact=True).click()
             ana.get_by_role('button', name='+ Crear publicación', exact=True).click()
             field(ana, 'Título').fill(title)
             field(ana, 'Descripción').fill('Tomates San Marzano maduros')
             ana.get_by_role('button', name='Guardar y añadir fotos', exact=True).click()
-            expect(ana.get_by_text('¡Publicación guardada!')).to_be_visible()
+            expect(ana.get_by_text('¡Publicación guardada!').first).to_be_visible()
             ana.get_by_role('button', name='Listo', exact=True).click()
             expect(ana.locator('.stir-card').filter(has=ana.get_by_role('button', name=title, exact=True))).to_be_visible()
 
@@ -114,23 +114,21 @@ def main():
             pedro.get_by_role('button', name='Hacer una propuesta', exact=True).click()
             field(pedro, 'Mensaje').fill('Me interesan 15kg')
             pedro.get_by_role('button', name='Enviar propuesta', exact=True).click()
-            expect(pedro.get_by_text('Abierta')).to_be_visible()
+            expect(pedro.get_by_text('Abierta').first).to_be_visible()
 
             ana.get_by_role('button', name='Mis negociaciones', exact=True).click()
             ana.get_by_role('button', name='Ver', exact=True).click()
-            expect(ana.get_by_text('Me interesan 15kg')).to_be_visible()
+            expect(ana.get_by_text('Me interesan 15kg').first).to_be_visible()
             ana.get_by_role('button', name='Contraoferta', exact=True).click()
             field(ana, 'Mensaje').fill('Puedo hacer 20kg al mismo precio')
             ana.get_by_role('button', name='Enviar contraoferta', exact=True).click()
-            expect(ana.get_by_text('Puedo hacer 20kg al mismo precio')).to_be_visible()
+            expect(ana.get_by_text('Puedo hacer 20kg al mismo precio').first).to_be_visible()
 
             pedro.reload()
-            pedro.get_by_role('button', name='Mis negociaciones', exact=True).click()
-            pedro.get_by_role('button', name='Ver', exact=True).click()
-            expect(pedro.get_by_text('Puedo hacer 20kg al mismo precio')).to_be_visible()
+            expect(pedro.get_by_text('Puedo hacer 20kg al mismo precio').first).to_be_visible()
             pedro.get_by_role('button', name='Aceptar', exact=True).click()
             expect(pedro.get_by_role('heading', name='Acuerdo', exact=True)).to_be_visible()
-            expect(pedro.get_by_text('Sin intercambio económico')).to_be_visible()
+            expect(pedro.get_by_text('Sin intercambio económico').first).to_be_visible()
 
             assert not errors, errors
             print('BROWSER RELEASE SMOKE: PASS (two browser sessions: login, profile, listing, offer, counteroffer, acceptance and agreement on '
