@@ -1,0 +1,72 @@
+# IDAX Ledger private XRPL network: a SEPARATE Compose project from STIR (idax-ledger-<env>).
+# It owns three validators and one non-validating API node. Its named runtime (identities, NuDB, SQLite, logs) lives
+# under IDAX_LEDGER_RUNTIME_PATH, outside this repository and outside the STIR project. `docker compose down` of STIR never
+# touches this project; `down -v` here would destroy the ledger history and must be an explicit, reviewed decision.
+#
+# Based on the IDAX Ledger design in vendor/idax-ledger/xrpl/docker-compose.yml (same topology, same ports for the
+# validators, same config template), with these deliberate deviations for the DEV deployment:
+#   - the image is the verified source-built xrpld (XRPLD_IMAGE), not the upstream image;
+#   - RPC/WebSocket admin ports bind to 127.0.0.1 only (the design binds them on every interface);
+#   - the configuration is mounted at /etc/xrpld, because the source-built image's entrypoint runs
+#     `xrpld --conf /etc/xrpld/xrpld.cfg` and copies nothing;
+#   - a non-validating API node is added on port 5010 (RPC) and 6010 (WebSocket) for application traffic.
+#
+# Usage (see deploy/idax-ledger/README.md):
+#   IDAX_LEDGER_RUNTIME_PATH=~/idax-ledger-dev/runtime XRPLD_IMAGE=idax/xrpld:3.3.0-source \
+#     docker compose -p idax-ledger-dev -f deploy/idax-ledger/compose.xrpl.yml up -d
+x-validator: &validator
+  image: ${XRPLD_IMAGE:?set XRPLD_IMAGE to the verified source-built xrpld image}
+  restart: unless-stopped
+  stop_grace_period: 60s
+  networks: [xrpl-private]
+  healthcheck:
+    test: ["CMD-SHELL", "xrpld --conf /etc/xrpld/xrpld.cfg server_info 2>/dev/null | grep -q '\"server_state\" : \"proposing\"'"]
+    interval: 10s
+    timeout: 5s
+    retries: 30
+    start_period: 60s
+
+services:
+  validator-01:
+    <<: *validator
+    container_name: idax-ledger-dev-validator-01
+    volumes:
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-01/config:/etc/xrpld:ro
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-01/data:/var/lib/xrpld
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-01/log:/var/log/xrpld
+    ports: ["127.0.0.1:5006:5005", "127.0.0.1:6006:6006"]
+  validator-02:
+    <<: *validator
+    container_name: idax-ledger-dev-validator-02
+    volumes:
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-02/config:/etc/xrpld:ro
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-02/data:/var/lib/xrpld
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-02/log:/var/log/xrpld
+    ports: ["127.0.0.1:5007:5005", "127.0.0.1:6007:6006"]
+  validator-03:
+    <<: *validator
+    container_name: idax-ledger-dev-validator-03
+    volumes:
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-03/config:/etc/xrpld:ro
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-03/data:/var/lib/xrpld
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-03/log:/var/log/xrpld
+    ports: ["127.0.0.1:5008:5005", "127.0.0.1:6008:6006"]
+  api-01:
+    <<: *validator
+    healthcheck:
+      test: ["CMD-SHELL", "xrpld --conf /etc/xrpld/xrpld.cfg server_info 2>/dev/null | grep -q '\"server_state\" : \"\\(full\\|proposing\\|connected\\)\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    container_name: idax-ledger-dev-api-01
+    volumes:
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/api-01/config:/etc/xrpld:ro
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/api-01/data:/var/lib/xrpld
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/api-01/log:/var/log/xrpld
+    ports: ["127.0.0.1:5010:5005", "127.0.0.1:6010:6006"]
+
+networks:
+  xrpl-private:
+    name: idax-ledger-dev-xrpl-private
+    driver: bridge
