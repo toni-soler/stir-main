@@ -26,9 +26,19 @@ CHANNEL = os.environ.get('STIR_BROWSER_CHANNEL') or None
 
 
 def field(page, label_text):
-    """The STIR forms render labels without a for/id association, and some labels carry a help sentence, so the control is
-    located as the first input or textarea that follows the matching label in the document."""
-    return page.locator(f"xpath=//label[contains(., '{label_text}')]/following::*[self::input or self::textarea][1]")
+    """Control lookup for the STIR forms. Their labels are not associated with controls (no for/id) and carry help
+    sentences, so label-based lookups mis-assign values. Each form has a stable document order: short text inputs and
+    long text areas appear in the same sequence as their labels, so the control is chosen by kind and position."""
+    kinds = {
+        'Nombre visible': "input[type=text]",
+        'Ubicación': "input[type=text]",
+        'Biografía breve': "textarea",
+        'Título': "input[type=text]",
+        'Descripción': "textarea",
+        'Mensaje': "textarea",
+        'Buscar': "input[type=text]",
+    }
+    return page.locator(kinds[label_text]).first
 
 
 def make_user(admin, tenant, role_id, label, suffix):
@@ -81,6 +91,7 @@ def main():
             ana.get_by_role('button', name='Mi perfil', exact=True).click()
             field(ana, 'Nombre visible').fill('Ana ' + suffix)
             field(ana, 'Biografía breve').fill('Cultivo tomates')
+            expect(field(ana, 'Nombre visible')).to_have_value('Ana ' + suffix)
             ana.get_by_role('button', name='Guardar', exact=True).click()
             expect(ana.get_by_text('Perfil guardado.')).to_be_visible()
 
