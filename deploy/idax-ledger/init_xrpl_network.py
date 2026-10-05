@@ -83,6 +83,10 @@ def main():
         else:
             token = None
         config = template.replace("__NETWORK_ID__", str(args.network_id))
+        if node in VALIDATORS:
+            # peer_private=1: validators accept inbound peers only from their own fixed list, so the API node
+            # must be listed here or it can never connect to the validators.
+            config = config.replace("validator-03 51235\n", f"validator-03 51235\n{API_NODE} 51235\n", 1)
         if token is None:
             config = re.sub(r"\[validator_token\]\s*__VALIDATOR_TOKEN__\s*", "", config)
         else:
