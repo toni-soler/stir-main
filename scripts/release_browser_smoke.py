@@ -25,6 +25,12 @@ SECRETS = Path(os.environ.get('STIR_BROWSER_SECRETS', ROOT / '.local/secrets'))
 CHANNEL = os.environ.get('STIR_BROWSER_CHANNEL') or None
 
 
+def field(page, label_text):
+    """The STIR forms render labels without a for/id association, and some labels carry a help sentence, so the control is
+    located as the first input or textarea that follows the matching label in the document."""
+    return page.locator(f"xpath=//label[contains(., '{label_text}')]/following::*[self::input or self::textarea][1]")
+
+
 def make_user(admin, tenant, role_id, label, suffix):
     email = f'{label}-{suffix}@stir.test'
     password = secrets.token_urlsafe(24)
@@ -73,23 +79,23 @@ def main():
 
             login(ana, ana_email, ana_password)
             ana.get_by_role('button', name='Mi perfil', exact=True).click()
-            ana.get_by_label('Nombre visible', exact=True).fill('Ana ' + suffix)
-            ana.get_by_label('Biografía breve', exact=True).fill('Cultivo tomates')
+            field(ana, 'Nombre visible').fill('Ana ' + suffix)
+            field(ana, 'Biografía breve').fill('Cultivo tomates')
             ana.get_by_role('button', name='Guardar', exact=True).click()
             expect(ana.get_by_text('Perfil guardado.')).to_be_visible()
 
             ana.get_by_role('button', name='← Marketplace', exact=True).click()
             ana.get_by_role('button', name='+ Crear publicación', exact=True).click()
-            ana.get_by_label('Título', exact=True).fill(title)
-            ana.get_by_label('Descripción', exact=True).fill('Tomates San Marzano maduros')
+            field(ana, 'Título').fill(title)
+            field(ana, 'Descripción').fill('Tomates San Marzano maduros')
             ana.get_by_role('button', name='Guardar', exact=True).click()
             expect(ana.locator('.stir-card').filter(has=ana.get_by_role('button', name=title, exact=True))).to_be_visible()
 
             login(pedro, pedro_email, pedro_password)
-            pedro.get_by_label('Buscar', exact=True).fill(title)
+            field(pedro, 'Buscar').fill(title)
             pedro.get_by_role('button', name=title, exact=True).click()
             pedro.get_by_role('button', name='Hacer una propuesta', exact=True).click()
-            pedro.get_by_label('Mensaje', exact=True).fill('Me interesan 15kg')
+            field(pedro, 'Mensaje').fill('Me interesan 15kg')
             pedro.get_by_role('button', name='Enviar propuesta', exact=True).click()
             expect(pedro.get_by_text('Abierta')).to_be_visible()
 
@@ -97,7 +103,7 @@ def main():
             ana.get_by_role('button', name='Ver', exact=True).click()
             expect(ana.get_by_text('Me interesan 15kg')).to_be_visible()
             ana.get_by_role('button', name='Contraoferta', exact=True).click()
-            ana.get_by_label('Mensaje', exact=True).fill('Puedo hacer 20kg al mismo precio')
+            field(ana, 'Mensaje').fill('Puedo hacer 20kg al mismo precio')
             ana.get_by_role('button', name='Enviar contraoferta', exact=True).click()
             expect(ana.get_by_text('Puedo hacer 20kg al mismo precio')).to_be_visible()
 
