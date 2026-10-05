@@ -422,7 +422,7 @@ index 0000000..7e5de36
 +    public record CredentialAdded(UUID credentialId, UUID controllerId, long activationSequence) {}
 +}
 diff --git a/backend/src/main/resources/generated/ostris/permission-catalog.generated.json b/backend/src/main/resources/generated/ostris/permission-catalog.generated.json
-index 8dce7fe..871d618 100644
+index e48074e..e5405a5 100644
 --- a/backend/src/main/resources/generated/ostris/permission-catalog.generated.json
 +++ b/backend/src/main/resources/generated/ostris/permission-catalog.generated.json
 @@ -1,6 +1,33 @@
@@ -459,9 +459,9 @@ index 8dce7fe..871d618 100644
      {
        "actionKey": "manage",
        "apiPath": "/api/ostris/identity/continuity-decisions",
-@@ -19,6 +46,15 @@
-       "labelKey": "ostris.permissions.identity-continuity.read-private",
-       "resourceKey": "ostris.identity-continuity"
+@@ -28,6 +55,15 @@
+       "labelKey": "ostris.permissions.ledger-outbox.replay",
+       "resourceKey": "ostris.ledger-outbox"
      },
 +    {
 +      "actionKey": "activate",
@@ -475,7 +475,7 @@ index 8dce7fe..871d618 100644
      {
        "actionKey": "read",
        "apiPath": "/api/ostris/participants/*/*",
-@@ -54,6 +90,15 @@
+@@ -63,6 +99,15 @@
        "fieldKey": null,
        "labelKey": "ostris.permissions.transaction.create",
        "resourceKey": "ostris.transaction"
@@ -492,10 +492,10 @@ index 8dce7fe..871d618 100644
    ],
    "schemaVersion": 1,
 diff --git a/backend/src/test/java/es/idynamicsax/ostris/OstrisPermissionCatalogPostgresTest.java b/backend/src/test/java/es/idynamicsax/ostris/OstrisPermissionCatalogPostgresTest.java
-index 030cce7..ced4604 100644
+index 0860ed9..c8fd15b 100644
 --- a/backend/src/test/java/es/idynamicsax/ostris/OstrisPermissionCatalogPostgresTest.java
 +++ b/backend/src/test/java/es/idynamicsax/ostris/OstrisPermissionCatalogPostgresTest.java
-@@ -42,12 +42,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
+@@ -42,13 +42,18 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  class OstrisPermissionCatalogPostgresTest {
      private static final String CATALOG = "generated/ostris/permission-catalog.generated.json";
      private static final List<String> CANONICAL_CODES = List.of(
@@ -504,6 +504,7 @@ index 030cce7..ced4604 100644
 +            "OSTRIS_DISCOVERY_READ",
              "OSTRIS_IDENTITY_CONTINUITY_MANAGE",
              "OSTRIS_IDENTITY_CONTINUITY_READ_PRIVATE",
+             "OSTRIS_LEDGER_OUTBOX_REPLAY",
 +            "OSTRIS_PARTICIPANT_ACTIVATE",
              "OSTRIS_READ",
              "OSTRIS_TRANSACTION_AUTHORIZE",
@@ -514,7 +515,7 @@ index 030cce7..ced4604 100644
      private static final UUID TENANT_A = UUID.fromString("00000000-0000-0000-0000-00000000000a");
      private static final UUID TENANT_B = UUID.fromString("00000000-0000-0000-0000-00000000000b");
      private static final UUID USER = UUID.fromString("018f6f9a-7b1c-7a2b-8c3d-4e5f60719341");
-@@ -142,9 +147,9 @@ class OstrisPermissionCatalogPostgresTest {
+@@ -143,9 +148,9 @@ class OstrisPermissionCatalogPostgresTest {
          var result = registrar.register("ostris", bytes);
          assertEquals(0, result.created());
          assertEquals(0, result.updated());
@@ -527,7 +528,7 @@ index 030cce7..ced4604 100644
          assertEquals(0, jdbc.queryForObject("""
                  SELECT count(*) FROM (
 diff --git a/backend/src/test/java/es/idynamicsax/ostris/api/HttpSecurityPostgresTest.java b/backend/src/test/java/es/idynamicsax/ostris/api/HttpSecurityPostgresTest.java
-index c2f7763..9485b31 100644
+index e7795a1..11a5a13 100644
 --- a/backend/src/test/java/es/idynamicsax/ostris/api/HttpSecurityPostgresTest.java
 +++ b/backend/src/test/java/es/idynamicsax/ostris/api/HttpSecurityPostgresTest.java
 @@ -112,7 +112,7 @@ class HttpSecurityPostgresTest {

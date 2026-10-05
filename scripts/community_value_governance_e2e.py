@@ -40,7 +40,12 @@ def main():
         {'key':'publisher2-'+suffix2,'name':'Second publisher','description':'Local governance test','enabled':True},admin,(200,201))
     request(f'/api/shell/v1/tenants/{tenant}/roles/'+publisher_role['id']+'/permissions','PUT',MEMBER+['stir.references.publish'],admin)
     diego_login=make_login(admin,tenant,publisher_role['id'],'diego',suffix2)
-    diego=request('/api/shell/v1/auth/login','POST',dict(zip(['email','password'],diego_login)))['accessToken']
+    diego_session=request('/api/shell/v1/auth/login','POST',dict(zip(['email','password'],diego_login)))
+    diego=diego_session['accessToken']
+    # Integrity decisions are community-authority acts. While Ordinary Governance is disabled that authority is
+    # tenant owner/admin; the second publisher's custom role is platform permission only. Diego is promoted to
+    # tenant admin, still distinct from ana, the case originator, who can never decide their own case.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{diego_session['user']['id']}';")
 
     definition=request(base+'/references','POST',{'name':'Flour 1kg','scope':'One 1kg bag of flour',
         'attributes':{'weight':'1kg'},'quantityBasis':'1','quantityUnit':'bag'},a)

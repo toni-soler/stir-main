@@ -1,0 +1,36 @@
+# RELEASE IMAGE PIN. Used when a Compose project must run the exact release-candidate images without building.
+# Every application service gets an immutable release tag (stir-release/<name>:rc) that refers to the image already
+# built and validated on the DEV VM; pull_policy never forbids any rebuild or pull that could substitute code.
+#   docker compose -p <project> -f compose.yml -f compose.release.yml -f deploy/compose.release-images.yml up -d --wait
+# The retag step and the manifest with image ids live in release/manifest.json.
+services:
+  core-migrations:
+    image: stir-release/core-migrations:rc
+    pull_policy: never
+  stir:
+    image: stir-release/stir:rc
+    pull_policy: never
+  governed-verifier:
+    image: stir-release/governed-verifier:rc
+    pull_policy: never
+  stir-audit-verifier:
+    image: stir-release/stir-audit-verifier:rc
+    pull_policy: never
+  stir-ui:
+    image: stir-release/stir-ui:rc
+    pull_policy: never
+  shell:
+    image: stir-release/shell:rc
+    pull_policy: never
+  ostris:
+    image: stir-release/ostris:rc
+    pull_policy: never
+  ostris-ui:
+    image: stir-release/ostris-ui:rc
+    pull_policy: never
+  ledger:
+    image: stir-release/ledger:rc
+    pull_policy: never
+  ledger-ui:
+    image: stir-release/ledger-ui:rc
+    pull_policy: never

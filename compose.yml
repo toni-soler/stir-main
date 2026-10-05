@@ -63,6 +63,38 @@ services:
     depends_on:
       module-migrations: {condition: service_completed_successfully}
     networks: [data]
+  governed-verifier-provision:
+    logging: *default-logging
+    # Sets idax_governed_verifier's password from its own secret (V20 creates the role without one),
+    # so the verifier credential never appears in any migration or in the ordinary runtime's secrets.
+    image: postgres:17-alpine
+    entrypoint: [/bin/sh, /provision.sh]
+    volumes: [./deploy/provision-governed-verifier.sh:/provision.sh:ro]
+    secrets: [postgres_password, governed_verifier_password]
+    depends_on:
+      module-migrations: {condition: service_completed_successfully}
+    networks: [data]
+  governed-verifier:
+    logging: *default-logging
+    # Constitutional writes only (Seven Keys bootstrap, proposals, signatures, activation, suspension,
+    # WebAuthn registration). The ordinary `stir` service does not register these routes and has no
+    # grant on the underlying tables; this service is the only one holding idax_governed_verifier.
+    build: ../stir-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: governed-verifier
+      DATABASE_URL: jdbc:postgresql://postgres:5432/idax
+      JAVA_TOOL_OPTIONS: -Xmx384m
+      STIR_SITE_NAME: ${STIR_SITE_NAME:-STIR}
+      STIR_PUBLIC_BASE_URL: ${STIR_PUBLIC_BASE_URL:-http://localhost:8089}
+    secrets: [governed_verifier_password, jwt_public_key]
+    depends_on:
+      governed-verifier-provision: {condition: service_completed_successfully}
+    networks: [edge, data]
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://localhost:8096/actuator/health/readiness']
+      interval: 10s
+      timeout: 5s
+      retries: 40
   stir-audit-verifier:
     logging: *default-logging
     build: ../stir-backend/audit-verifier
@@ -252,3 +284,4 @@ secrets:
   storage_access_key: {file: ./.local/secrets/storage_access_key}
   storage_secret_key: {file: ./.local/secrets/storage_secret_key}
   stir_auditor_password: {file: ./.local/secrets/stir_auditor_password}
+  governed_verifier_password: {file: ./.local/secrets/governed_verifier_password}

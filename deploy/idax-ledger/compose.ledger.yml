@@ -1,0 +1,113 @@
+# IDAX Ledger service for the DEV private XRPL network. Same Compose project as the validators (idax-ledger-dev), so
+# `docker compose down` of STIR never reaches it. Always used together with compose.xrpl.yml:
+#   docker compose -p idax-ledger-dev -f deploy/idax-ledger/compose.xrpl.yml -f deploy/idax-ledger/compose.ledger.yml up -d
+#
+# The ledger has its own PostgreSQL and its own idax_core/idax_ledger schemas. Platform identity (tenant and the STIR
+# service principal) is mirrored into this database by deploy/idax-ledger/provision_ledger_platform.sh; the trust anchor for
+# service tokens is the same public key STIR's platform uses. Platform STIR is NOT reachable from the XRPL network.
+#
+# Secrets (never in Git): <runtime>/ledger/secrets/{postgres_password,runtime_password,jwt_public_key,anchor.seed}.
+services:
+  ledger-postgres:
+    image: postgres:17-alpine
+    container_name: idax-ledger-dev-postgres
+    environment:
+      POSTGRES_DB: idax
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - ledger-postgres-data:/var/lib/postgresql/data
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/ledger/secrets/postgres_password:/run/secrets/postgres_password:ro
+    networks: [ledger-internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d idax"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  ledger-core-migrations:
+    image: stir-release/core-migrations:rc
+    pull_policy: never
+    entrypoint: [/bin/sh, -ec]
+    command: ['exec flyway -url=jdbc:postgresql://ledger-postgres:5432/idax -user=postgres -password="$$(cat /run/secrets/postgres_password)" -schemas=idax_core -table=flyway_schema_history_idax_core migrate']
+    volumes:
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/ledger/secrets/postgres_password:/run/secrets/postgres_password:ro
+    networks: [ledger-internal]
+    depends_on:
+      ledger-postgres: {condition: service_healthy}
+
+  ledger-migrations:
+    image: flyway/flyway:11.12.0-alpine
+    entrypoint: [/bin/sh, -ec]
+    command: ['exec flyway -url=jdbc:postgresql://ledger-postgres:5432/idax -user=postgres -password="$$(cat /run/secrets/postgres_password)" -schemas=idax_ledger -table=flyway_schema_history -locations=filesystem:/migrations/idax_ledger migrate']
+    volumes:
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/ledger/secrets/postgres_password:/run/secrets/postgres_password:ro
+      - ${IDAX_LEDGER_MIGRATIONS_PATH:?}:/migrations/idax_ledger:ro
+    networks: [ledger-internal]
+    depends_on:
+      ledger-core-migrations: {condition: service_completed_successfully}
+
+  ledger-provision:
+    image: postgres:17-alpine
+    entrypoint: [/bin/sh, /provision.sh]
+    volumes:
+      - ./provision_ledger_runtime_role.sh:/provision.sh:ro
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/ledger/secrets:/run/secrets:ro
+    networks: [ledger-internal]
+    depends_on:
+      ledger-migrations: {condition: service_completed_successfully}
+
+  ledger:
+    image: stir-release/ledger:rc
+    pull_policy: never
+    container_name: idax-ledger-dev-ledger
+    entrypoint: [/bin/sh, /app/run-module.sh]
+    volumes:
+      - ${IDAX_LEDGER_REPO_PATH:?}/deploy/run-module.sh:/app/run-module.sh:ro
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/ledger/secrets:/run/secrets:ro
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://ledger-postgres:5432/idax
+      SPRING_DATASOURCE_USERNAME: idax_backend
+      IDAX_MODULE_MIGRATIONS_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: -Xmx512m
+      IDAX_LEDGER_AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/jwt_public_key
+      # Service tokens (ostris-ledger-delivery) are verified with the dedicated SERVICE public key, never with the user key.
+      IDAX_SERVICE_AUTH_ISSUER: idax-service
+      IDAX_SERVICE_AUTH_PUBLIC_KEY_LOCATION: file:/run/secrets/service_public_key.pem
+      IDAX_LEDGER_PRIVATE_ENABLED: "true"
+      IDAX_LEDGER_PRIVATE_NETWORK_ID: "2181844733"
+      IDAX_LEDGER_ANCHOR_ACCOUNT: ${IDAX_LEDGER_ANCHOR_ACCOUNT:?set to the anchoring account address}
+      IDAX_LEDGER_ANCHOR_SEED_FILE: /run/secrets/anchor.seed
+      IDAX_LEDGER_XRPL_NODE_01_URL: http://validator-01:5005
+      IDAX_LEDGER_XRPL_NODE_02_URL: http://validator-02:5005
+      IDAX_LEDGER_XRPL_NODE_03_URL: http://validator-03:5005
+      IDAX_LEDGER_TESTNET_ENABLED: "false"
+      IDAX_LEDGER_MAINNET_ENABLED: "false"
+    ports: ["127.0.0.1:8094:8094"]
+    networks: [ledger-internal, xrpl-private, platform]
+    restart: unless-stopped
+    depends_on:
+      ledger-provision: {condition: service_completed_successfully}
+      validator-01: {condition: service_healthy}
+      validator-02: {condition: service_healthy}
+      validator-03: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -qO-, 'http://localhost:8094/actuator/health/readiness']
+      interval: 10s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+
+volumes:
+  ledger-postgres-data:
+    name: idax-ledger-dev-postgres-data
+
+networks:
+  ledger-internal:
+    name: idax-ledger-dev-internal
+    driver: bridge
+    internal: true
+  platform:
+    name: idax-ledger-dev-platform
+    driver: bridge

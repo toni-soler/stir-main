@@ -25,6 +25,9 @@ def fixtures():
     publisher=role(tenant,'publisher',MEMBER+['stir.references.publish'])
     b_role=role(other,'other',MEMBER)
     ana=make_user(admin,tenant,publisher,'ana',suffix)
+    # Community bootstrap authority is tenant owner/admin while Ordinary Governance is disabled; a custom
+    # publisher role alone is platform permission, not community authority. Ana is the tenant administrator.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{ana['user']['id']}';")
     pedro=make_user(admin,tenant,member,'pedro',suffix)
     carlos=make_user(admin,tenant,member,'carlos',suffix)
     bea=make_user(admin,other,b_role,'bea',suffix)
@@ -41,9 +44,11 @@ def main():
     assert definition['unit_id']==binding['unitId']
     evidence=request(ref,token=p)['evidence']
     assert evidence['status']=='INSUFFICIENT_DATA' and evidence['median'] is None
+    # Drafting a convention is itself a community-authority act (ReferenceService.propose): the tenant
+    # administrator drafts it. Pedro, a plain member, is still proven unable to publish it below.
     def proposal(amount):
         return request(ref+'/proposals','POST',{'kind':'CONVENTION','lowerValue':amount,'upperValue':amount,
-            'explanation':'Assembly convention, not an observed price','origin':'Community assembly','validDays':90},p)
+            'explanation':'Assembly convention, not an observed price','origin':'Community assembly','validDays':90},a)
     first=proposal('10')
     request(base+'/references/proposals/'+first['id']+'/publish','POST',{'decision':'Unauthorized'},p,403)
     v1=request(base+'/references/proposals/'+first['id']+'/publish','POST',{'decision':'Initial assembly decision'},a)

@@ -25,7 +25,16 @@ def main():
     login_email=os.environ.get('STIR_TEST_LOGIN_EMAIL','admin@stir.test')
     request('/actuator/health/readiness')
     session=request('/api/shell/v1/auth/login','POST',{'email':login_email,'password':(ROOT/'.local/secrets/login_password').read_text().strip()})
-    token=session['accessToken'];tenant=session['tenants'][0]['id'];base=f'/api/stir/tenants/{tenant}/listings'
+    # The platform login provisions a disposable participant; listings are business data, which the platform
+    # administrator must not write (V17 removed idax_admin DML). The smoke checks run as that participant.
+    from economic_exchange_e2e import PERMISSIONS, make_user
+    admin=session['accessToken'];tenant=session['tenants'][0]['id']
+    suffix=uuid.uuid4().hex[:8]
+    role_row=request(f'/api/shell/v1/tenants/{tenant}/roles','POST',{'key':'smoke-participant-'+suffix,'name':'Smoke participant',
+        'description':'Local smoke fixture','enabled':True},admin,(200,201))
+    request(f'/api/shell/v1/tenants/{tenant}/roles/{role_row["id"]}/permissions','PUT',PERMISSIONS,admin)
+    session=make_user(admin,tenant,role_row['id'],'smoke',suffix)
+    token=session['accessToken'];base=f'/api/stir/tenants/{tenant}/listings'
     request(base,expected=401)
     request(base,token='invalid',expected=401)
     parts=token.split('.')

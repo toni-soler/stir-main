@@ -1,0 +1,186 @@
+{
+  "release": "STIR 0.5.0-rc1 - governed-state effectivity boundary (release candidate)",
+  "stirVersion": "0.5.0-rc1",
+  "status": "RELEASE CANDIDATE 0.5.0-rc1 (STIR). Ledger integration DEV PARTIAL/BLOCKED. STIR.ES RELEASE: NOT DEPLOYED.",
+  "builtOn": "DEV VM (devstires, SSH port 12522). No build, test, image or compose work ran on the Windows workstation.",
+  "sourceCommits": {
+    "stir-main": {
+      "commit": "9bb85f1c7a945c349e206d35642c5568df6a9031",
+      "note": "Deployment, E2E, release gate and Flyway matrix. Later commits in this repo change documentation and release metadata only."
+    },
+    "stir-backend": {
+      "commit": "63806d348946b1c4728c0a674608c480aeffc1b7",
+      "note": "Ordinary runtime, governed-state verifier profile, Flyway V1-V21, V20/V21 migrations unchanged since application."
+    },
+    "stir-frontend": {
+      "commit": "84436aaaa8386943bcc669806a1797ab1c6c4775",
+      "note": "Frontend UI unchanged since 9fb2211; only the node test script changed (glob instead of directory)."
+    },
+    "stir-doc": {
+      "commit": "edf06be (branch claude/governed-state-effectivity-boundary, local; not pushed)",
+      "note": "Validation record for this release candidate."
+    }
+  },
+  "images": {
+    "note": "Images were built locally on the DEV VM and never pushed to a registry, so no repository digest exists. The image id is the content-addressed config digest (sha256) reported by the local Docker engine and is the immutable identity used by the release. Promotion keeps the same ids: stir-dev used these exact images.",
+    "releaseTags": {
+      "stir-release/core-migrations:rc": "sha256:da69ed9f063426e51831db273e84cf213183f891e6be0eaca66cae9991c71667",
+      "stir-release/stir:rc": "sha256:5659f4ae01037e7e08f074da6dbbfe6158b9fcd90a37cd1c5000ebccde3e184f",
+      "stir-release/governed-verifier:rc": "sha256:15b8dc7998b9c72bfc4d29971841f20069f3606150df22266db9bdf18f370c49",
+      "stir-release/stir-audit-verifier:rc": "sha256:f88a4df0af73d406a6ff93f9f7c47f4de18e084058d08f92000032552df727b2",
+      "stir-release/stir-ui:rc": "sha256:f0a97e17b23f6f32d50dbcb84cf5838736cfbcde6edbcd622c87d2298310dd04",
+      "stir-release/shell:rc": "sha256:dbcc0a2be7e6d61f8378848eb6a8d7d2e597d3bf5a330e0ea2ff93ea18186d38",
+      "stir-release/ostris:rc": "sha256:36c62a58c7c37a80f0c9640d0adb2e101be6e41b7a0d70cd7390287488b8769b",
+      "stir-release/ostris-ui:rc": "sha256:90c0d377d3e98e5760d4d1e089638478738365c099148621f8e92c15f59589a3",
+      "stir-release/ledger:rc": "sha256:13cda980a6c0a8f1f034e053f508d781c9e0f98350b33515dc2a384736a056f6",
+      "stir-release/ledger-ui:rc": "sha256:8868f10f59edd03f15e74c7e3d938798ab3feed3a160e46c9d453c14c51da4a2"
+    },
+    "silo": {
+      "image": "stir-claude/silo:RELEASE.2026-09-16T00-00-00Z-claude-1",
+      "id": "sha256:63b86b5bc806621a2455439678e4bf7777f77bb2fccf1366b0ed6f76297c157e",
+      "sourceCommit": "2a4d51406b7ed87af5fe6fe0f801f3290f96eb3c",
+      "binarySha256": "a9b692f53c5d3429c3be0dbe58c1baf3f85fedf3e57278346edfae81bd353459",
+      "versionOutput": "silo version RELEASE.2026-09-16T00-00-00Z (commit-id=2a4d51406b7ed87af5fe6fe0f801f3290f96eb3c)",
+      "status": "SOURCE-BUILT SILO: VERIFIED; ACTIVE in the isolated release topology and in stir-dev (MinIO service)."
+    },
+    "xrpld": {
+      "image": "idax/xrpld:3.3.0-source",
+      "id": "sha256:fb1005cb0856eef98537152d20d169edb1f5286e8d232091e7a472ea67e0c137",
+      "binarySha256": "7f9ae7cff02c5d324108b67f083eb683ab61e94170953106c2f6539e340810c8",
+      "version": "3.3.0",
+      "gitCommit": "00a178fb92ca49521b937ae1a99d863765ea8a90",
+      "status": "SOURCE-BUILT XRPL: VERIFIED. XRPL ACTIVE IN STIR RELEASE: NO (OSTRIS_LEDGER_ENABLED=false; no runtime consumes a node; network identity design undecided)."
+    }
+  },
+  "flyway": {
+    "stir": "V21 (governed verifier membership predicates)",
+    "idax_core": "V91",
+    "idax_shell, idax_ledger, ostris": "latest vendor migrations, as applied by module-migrations"
+  },
+  "config": {
+    "revision": "stir-main 9bb85f1",
+    "compose": [
+      "compose.yml",
+      "compose.release.yml",
+      "deploy/compose.release-images.yml (dress rehearsal pin)"
+    ],
+    "faultTopology": "deploy/compose.audit-fault.yml - used only by the audit economic commit check, never in release",
+    "environmentNames": [
+      "STIR_HTTP_PORT",
+      "STIR_API_PORT",
+      "STIR_PUBLIC_BASE_URL",
+      "STIR_SITE_NAME",
+      "OSTRIS_LEDGER_ENABLED (must be false)"
+    ],
+    "secretNames": [
+      "postgres_password",
+      "runtime_password",
+      "governed_verifier_password",
+      "stir_auditor_password",
+      "jwt_private_key",
+      "jwt_public_key",
+      "bootstrap_token",
+      "login_password",
+      "storage_access_key",
+      "storage_secret_key"
+    ],
+    "noSecretValuesRecorded": true
+  },
+  "validation": {
+    "backend": "mvn -B verify on DEV VM at 63806d3: Tests run 263, Failures 0, Errors 0, Skipped 0, BUILD SUCCESS",
+    "frontend": "npm test 45/45 pass, npm run build exit 0, npm run i18n:validate exit 0 (at 84436aa)",
+    "releaseGate": "release_gate.sh on the isolated stack at 9bb85f1: 14 HTTP E2E scripts + audit economic commit (fault topology) failed=0; release topology restored healthy",
+    "flyway": "flyway_matrix.sh: empty->latest PASS (V21), V16->latest PASS (V21), V19->latest PASS (V21); row loss NONE; ordinary role cannot assume verifier; verifier role NOINHERIT NOBYPASSRLS NOSUPERUSER NOCREATEROLE",
+    "auditV18": "stir-audit-verifier /security-status securityState CLEAR, openIncidentCount 0; verifier-written governed rows carry session_user idax_governed_verifier; no ordinary role holds any privilege on stir_audit",
+    "backupRestore": "pg_dump -Fc of the validated stack DB restored into a disposable container with zero errors; governed and audit state identical (see RELEASE_CANDIDATE_EVIDENCE.md)"
+  },
+  "stirDevRehearsal": {
+    "project": "stir-dev",
+    "status": "CLEAN REBUILD FROM THE RELEASE IMAGES: YES",
+    "ports": {
+      "proxy": "127.0.0.1:28089",
+      "api": "127.0.0.1:28096"
+    },
+    "bootOrder": "governed-verifier started before stir on an empty database and stayed healthy (after the catalog-writer fix)",
+    "smoke": "readiness 200, /api/stir/instance 200 (stirVersion 0.5.0-rc1), shell login 200, governed write without token 401 at the verifier, audit CLEAR, restarts 0"
+  },
+  "previousVersionFields": {
+    "note": "Production inventory is not available without SSH. These fields must be read from the live host before deployment.",
+    "currentProductionRelease": "UNKNOWN",
+    "currentProductionImageIds": "UNKNOWN",
+    "currentProductionFlywayVersion": "UNKNOWN"
+  },
+  "evidenceLocations": {
+    "devVm": "/home/stir-admin/stir-claude-runs/ (gate-RC-FINAL-20261004T183139Z, flyway-final-20261004T180157Z, frontend-final-20261004T180712Z, backend-verify-rc2-20261004T182536Z, stir-dev-rebuild-final-20261004T183428Z, audit-fault-20261004T175428Z)",
+    "failedAttemptsKept": "stir-dev-rebuild-20261004T181633Z (verifier catalog-writer defect reproduced and kept as evidence)"
+  },
+  "ledgerIntegration": {
+    "status": "DEV PARTIAL: controlled STIR->osTRIS commit and disabled-delivery semantics PASS; end-to-end ledger anchoring BLOCKED on the platform service-token endpoint (anonymous request rejected by the vendored idax-shell security chain). OSTRIS_LEDGER_ENABLED=false in stir-dev.",
+    "xrplPrivateNetwork": {
+      "project": "idax-ledger-dev",
+      "networkId": 2181844733,
+      "topology": "3 validators + 1 non-validating API node",
+      "subnet": "172.27.0.0/24 fixed addresses 172.27.0.11-14",
+      "rpcBinding": "127.0.0.1 only",
+      "publicPeers": false,
+      "coldStartConvergence": "PASS (two full-stop, single-start runs, identical historical ledger hash)",
+      "xrpldSource": "3.3.0 commit 00a178fb92ca49521b937ae1a99d863765ea8a90",
+      "xrpldImageId": "sha256:fb1005cb0856eef98537152d20d169edb1f5286e8d232091e7a472ea67e0c137"
+    },
+    "ledgerService": {
+      "image": "stir-release/ledger:rc",
+      "imageId": "sha256:13cda980a6c0a8f1f034e053f508d781c9e0f98350b33515dc2a384736a056f6",
+      "database": "dedicated PostgreSQL 17 (idax_core, idax_ledger)",
+      "serviceAuth": "service-key trust only; user key not used for service tokens",
+      "negativeChecks": "no token 401; ordinary user token 401"
+    },
+    "tenantMirror": {
+      "tenantReference": "stir-ledger-dev",
+      "semantics": "referential routing record; platform row wins; no automatic delete; fields limited to id, code, name, status, mfa_required, timestamps"
+    },
+    "serviceGrant": {
+      "principal": "ostris-ledger-delivery",
+      "audience": "idax-ledger",
+      "permissions": [
+        "LEDGER_PROOF_CREATE",
+        "LEDGER_READ",
+        "LEDGER_PROOF_VERIFY"
+      ],
+      "mechanism": "canonical service_principal_create_grant in one transaction with tenant context",
+      "forbidden": "admin, wildcard, governance, role management, SuperAdmin, unrelated writes"
+    },
+    "anchoring": {
+      "status": "XRPL account funded on DEV only; no production funding",
+      "anchorAccountSecretRecorded": false
+    },
+    "openBlockers": [
+      "POST /api/service-auth/token is not permitted anonymously in the vendored idax-shell SecurityConfiguration (needs a platform decision)",
+      "ProtocolProofOutboxStore treats 401/403 as permanent; FAILED_PERMANENT rows are terminal and have no reviewed replay path",
+      "The stir-dev outbox row from the enabled attempt (9af43d9a-1a62-4a67-9cc7-fcd247292434) is FAILED_PERMANENT with LEDGER_HTTP_403"
+    ]
+  },
+  "productionRunbook": {
+    "status": "DRAFT - NOT EXECUTED",
+    "runbook": "release/PRODUCTION_DEPLOYMENT_OPERATOR_RUNBOOK.md",
+    "checklist": "release/PRODUCTION_DEPLOYMENT_CHECKLIST.md",
+    "executedByClaude": false
+  },
+  "releasePackage": {
+    "status": "DEV ARCHIVES CREATED; not transferred; not verified after transfer",
+    "location": "DEV VM devstires: ~/stir-release-archives/2026-10-05/ (not in Git)",
+    "archives": {
+      "ledger-xrpl-rc.tar": {
+        "sha256": "5ad134a7dfdb84a9179c80e154827f131dad1b1f0cb888c704ec28ab5d71ff03"
+      },
+      "silo-rc.tar": {
+        "sha256": "11a170c7e978f3df860ac204dd647388941624ec864b0c1a83047986d7fbbf70"
+      },
+      "stir-core-rc.tar": {
+        "sha256": "5a0c23c74446f5a3d872f48ba4b8d1c9dc6627a5f9ba019bd20e0724364bfc6a"
+      }
+    },
+    "contents": "12 release image tags (stir-release/* rc, idax/xrpld:3.3.0-source, stir-claude/silo RELEASE.2026-09-16...)",
+    "excludedByDesign": "validator keys, node keys, anchor seed, JWT private material, DB passwords, client secrets live in runtime secret directories, not in images",
+    "secretScan": "NOT PERFORMED on layer contents; exclusion is by construction (secrets are mounted at runtime, not baked in)"
+  }
+}

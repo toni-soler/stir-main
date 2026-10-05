@@ -39,6 +39,10 @@ def main():
     request(shell+'/roles/users/'+manager_session['user']['id'], 'PUT', {'roleIds': [manager_role['id']]}, admin, 204)
     manager_session = request('/api/shell/v1/auth/login', 'POST', {'email': manager_email, 'password': manager_password})
     m = manager_session['accessToken']; manager_id = manager_session['user']['id']
+    # Governance disabled: direct publish is community bootstrap authority = tenant owner/admin, not the
+    # custom permission role. The manager is promoted to tenant admin; its governance membership is
+    # still granted separately below, so no authority leaks into the enabled-governance phase.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{manager_id}';")
 
     voter_role = request(shell+'/roles', 'POST', {'key': 'gov-voter-'+tenant[:8], 'name': 'Governance voter',
         'description': 'E2E fixture', 'enabled': True}, admin, (200, 201))
@@ -65,9 +69,10 @@ def main():
     request(base+'/references/proposals/'+legacy_proposal['id']+'/publish', 'POST', {'decision': 'Legacy delegated publish'}, m)
 
     # --- Enable ordinary governance; build the electorate ---
-    request(gov+'/settings/'+community, 'PUT', {'enabled': True}, m)
+    # The roster must hold an active member before governance can be enabled (fail-closed), so members first.
     for voter in [manager_id] + [v['user']['id'] for v in voters]:
         request(gov+'/members/'+community+'/'+voter, 'POST', {}, m, 200)
+    request(gov+'/settings/'+community, 'PUT', {'enabled': True}, m)
     request(gov+'/policy/'+community, 'POST', {'quorumNumerator': 1, 'quorumDenominator': 2, 'approvalNumerator': 2,
         'approvalDenominator': 3, 'votingWindowHours': 1, 'abstentionRule': 'COUNTS_TOWARD_QUORUM_NOT_APPROVAL',
         'explanation': 'v0.1 initial policy'}, m)

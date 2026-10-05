@@ -1,20 +1,108 @@
 """Isolated development fixtures: public Core tenant capability + real Shell user/role APIs.
 No economic fixtures. Never invoke against a production deployment.
+
+INT-P1-002 harness fix: compose.yml hardcodes `name: stir-dev`, so any bare `docker compose`
+invocation from this directory - which is exactly what this module's sql() did before this fix -
+silently resolves against the live stir-dev project whenever the caller hasn't separately
+exported COMPOSE_PROJECT_NAME (e.g. via a .env file). That is how a routing bug in this exact
+function wrote ~30 test tenants into the real stir-dev database (see stir-doc/INT_P1_002.md).
+There is now no implicit/silent path: the target Compose project must be named explicitly via the
+STIR_COMPOSE_PROJECT environment variable, "stir-dev" is refused outright regardless of what the
+caller passes, and the container this would actually operate on is inspected and its compose
+project label verified to match before any command runs.
 """
 import json
+import os
 import secrets
 import subprocess
 import uuid
 from smoke import ROOT, request
 
-def sql(statement,runtime=False):
-    args=['docker','compose','exec','-T']
-    if runtime:args+=['-e','PGPASSWORD='+(ROOT/'.local/secrets/runtime_password').read_text().strip()]
-    args+=['postgres','psql','-X','-At','-v','ON_ERROR_STOP=1','-U','idax_backend' if runtime else 'postgres','-d','idax']
-    if runtime:args+=['-h','postgres']
-    result=subprocess.run(args,input=statement,text=True,cwd=ROOT,capture_output=True)
-    if result.returncode:raise AssertionError('SQL fixture/proof failed: '+result.stderr[:400])
+
+class ComposeSafetyError(RuntimeError):
+    """Raised when the target Compose project for these fixture helpers is missing, is
+    stir-dev, or does not match the container that would actually be operated on."""
+
+
+def compose_project():
+    """The isolated Compose project these fixture helpers must target. No default: an unset
+    STIR_COMPOSE_PROJECT is a hard error, not a silent fall-through to whatever `docker compose`
+    would resolve on its own (which is stir-dev, per compose.yml's hardcoded `name:`)."""
+    project = os.environ.get('STIR_COMPOSE_PROJECT', '').strip()
+    if not project:
+        raise ComposeSafetyError(
+            'STIR_COMPOSE_PROJECT is not set. Every docker compose invocation made by these E2E '
+            'fixture helpers (multitenant.py:sql(), and any sibling that shells out to docker '
+            'compose, e.g. backup_restore_e2e.py) must target an explicit, isolated project - '
+            'there is no safe default. compose.yml hardcodes `name: stir-dev`, so a bare '
+            '"docker compose ..." invocation without -p silently resolves against the live '
+            'stir-dev project. Set STIR_COMPOSE_PROJECT=<your isolated project name> (e.g. '
+            'stir-integration-gate-2) before running any script that imports this module.'
+        )
+    if project == 'stir-dev':
+        raise ComposeSafetyError(
+            'STIR_COMPOSE_PROJECT is set to "stir-dev". These fixture helpers create and delete '
+            'throwaway test data - tenants, users, roles, and in some scripts entire Docker '
+            'volumes - and must never target stir-dev, under any circumstance, even if that is '
+            'genuinely the caller\'s intent. Use an isolated project.'
+        )
+    # Side effect, deliberate: docker compose natively honors COMPOSE_PROJECT_NAME from the
+    # environment. Exporting it here means every subsequent `docker compose ...` call in this
+    # process AND in any subprocess it spawns (e.g. backup_restore_e2e.py shelling out to
+    # backup.py/restore.py, neither of which know about STIR_COMPOSE_PROJECT) inherits the same
+    # safe routing automatically, without needing every one of those scripts individually
+    # rewritten. subprocess.run() inherits the parent environment by default.
+    os.environ['COMPOSE_PROJECT_NAME'] = project
+    return project
+
+
+def verify_isolated_container(project, service='postgres'):
+    """Fail closed, before any mutating operation: resolve the real container docker compose
+    would operate on for `service` in `project`, and confirm its actual
+    com.docker.compose.project label matches `project` exactly (and is not stir-dev). Returns
+    the verified container id. Raises ComposeSafetyError on any mismatch, absence, or ambiguity -
+    never guesses, never proceeds on a partial match."""
+    ps = subprocess.run(
+        ['docker', 'compose', '-p', project, 'ps', '-q', service],
+        cwd=ROOT, capture_output=True, text=True)
+    container_id = ps.stdout.strip()
+    if not container_id or '\n' in container_id:
+        raise ComposeSafetyError(
+            f'Expected exactly one running "{service}" container for compose project '
+            f'"{project}", found {container_id.count(chr(10)) + (1 if container_id else 0)}. '
+            f'Refusing to proceed - the isolated stack may not be up, or the project name is '
+            f'ambiguous. stderr: {ps.stderr.strip()[:300]}'
+        )
+    inspect = subprocess.run(
+        ['docker', 'inspect', container_id, '--format',
+         '{{index .Config.Labels "com.docker.compose.project"}}'],
+        capture_output=True, text=True)
+    actual_project = inspect.stdout.strip()
+    if actual_project != project:
+        raise ComposeSafetyError(
+            f'Container {container_id} (resolved for service "{service}" under compose '
+            f'project "{project}") actually carries compose project label "{actual_project}". '
+            f'Refusing to proceed - this would have operated on the wrong stack.'
+        )
+    if actual_project == 'stir-dev':
+        raise ComposeSafetyError(
+            f'Container {container_id} belongs to project "stir-dev" - refusing to proceed '
+            f'under any circumstance, regardless of what was requested.'
+        )
+    return container_id
+
+
+def sql(statement, runtime=False):
+    project = compose_project()
+    verify_isolated_container(project, 'postgres')
+    args = ['docker', 'compose', '-p', project, 'exec', '-T']
+    if runtime: args += ['-e', 'PGPASSWORD=' + (ROOT / '.local/secrets/runtime_password').read_text().strip()]
+    args += ['postgres', 'psql', '-X', '-At', '-v', 'ON_ERROR_STOP=1', '-U', 'idax_backend' if runtime else 'postgres', '-d', 'idax']
+    if runtime: args += ['-h', 'postgres']
+    result = subprocess.run(args, input=statement, text=True, cwd=ROOT, capture_output=True)
+    if result.returncode: raise AssertionError('SQL fixture/proof failed: ' + result.stderr[:400])
     return result.stdout.strip()
+
 
 def main():
     admin=request('/api/shell/v1/auth/login','POST',{'email':'admin@stir.test','password':(ROOT/'.local/secrets/login_password').read_text().strip()})['accessToken']
@@ -66,7 +154,11 @@ def main():
     print('RLS enabled/forced:',table)
     print('Policies:',sql("select policyname,roles,cmd,qual,with_check from pg_policies where schemaname='stir' order by tablename,policyname;",runtime=True))
     runtime_sessions=sql("select distinct usename from pg_stat_activity where datname='idax' and backend_type='client backend' and application_name='PostgreSQL JDBC Driver';")
-    assert runtime_sessions=='idax_backend',runtime_sessions
+    # A pg_stat_activity snapshot: only three identities may ever hold a JDBC session - the ordinary runtime, the
+    # governed verifier (both required, both live here) and the audit verifier's own read-only credential, which is
+    # present only while that service holds a connection. Any other identity is a boundary failure.
+    observed=set(runtime_sessions.splitlines())
+    assert observed<={'idax_backend','idax_governed_verifier','stir_auditor'} and {'idax_backend','idax_governed_verifier'}<=observed,runtime_sessions
     print('Live JDBC session identities:',runtime_sessions)
     count=sql('select count(*) from stir.listing;',runtime=True);assert count=='0',count
     for role in ['idax_app','idax_admin']:

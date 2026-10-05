@@ -9,7 +9,15 @@ This is destructive to the local dev stack's current data by design - it is mean
 backup/restore mechanism actually works, not just that the scripts exist. Only run it against the
 isolated local/dev stir-main compose stack, never anything else.
 
-Usage: python scripts/backup_restore_e2e.py
+INT-P1-002 harness fix: this script used to shell out to bare `docker compose` (including a
+`down` and a hardcoded `docker volume rm stir-dev_postgres_data stir-dev_minio_data`) with no
+project scoping at all - compose.yml's hardcoded `name: stir-dev` meant an unset
+STIR_COMPOSE_PROJECT would have torn down and erased the REAL stir-dev volumes, not a throwaway
+isolated stack. See stir-doc/INT_P1_002.md. Every docker compose/volume command in this file is
+now explicitly scoped to STIR_COMPOSE_PROJECT (required, verified against the actual container
+labels before Step 1 even starts - see multitenant.compose_project()/verify_isolated_container()).
+
+Usage: STIR_COMPOSE_PROJECT=<isolated project name> python scripts/backup_restore_e2e.py
 """
 import hashlib
 import subprocess
@@ -18,7 +26,7 @@ import time
 import requests
 from pathlib import Path
 from smoke import ROOT, request
-from multitenant import sql
+from multitenant import sql, compose_project, verify_isolated_container
 
 PHOTO = ROOT / '.local/test-assets/test-photo.jpg'
 PHOTO_SHA256 = hashlib.sha256(PHOTO.read_bytes()).hexdigest()
@@ -27,7 +35,8 @@ def run(*args, **kwargs):
     subprocess.run(args, check=True, cwd=ROOT, **kwargs)
 
 def docker_compose(*args, **kwargs):
-    run('docker', 'compose', *args, **kwargs)
+    project = compose_project()
+    run('docker', 'compose', '-p', project, *args, **kwargs)
 
 def create_marker():
     admin = request('/api/shell/v1/auth/login', 'POST', {'email': 'admin@stir.test', 'password': (ROOT / '.local/secrets/login_password').read_text().strip()})['accessToken']
@@ -67,15 +76,22 @@ def marker_present_in_db(marker):
     return int(listing_count) == 1 and int(attachment_count) == 1
 
 def wait_healthy(service, timeout=120):
+    project = compose_project()
     deadline = time.time() + timeout
     while time.time() < deadline:
-        out = subprocess.run(['docker', 'compose', 'ps', service, '--format', '{{.Status}}'], check=True, cwd=ROOT, capture_output=True, text=True).stdout
+        out = subprocess.run(['docker', 'compose', '-p', project, 'ps', service, '--format', '{{.Status}}'], check=True, cwd=ROOT, capture_output=True, text=True).stdout
         if 'healthy' in out:
             return
         time.sleep(5)
     raise SystemExit(f'{service} did not become healthy within {timeout}s: {out!r}')
 
 def main():
+    # Fail closed before touching anything: require an explicit, isolated project and verify the
+    # container this would actually operate on carries that project's label, not stir-dev's.
+    project = compose_project()
+    verify_isolated_container(project, 'postgres')
+    print(f'--- Verified target compose project: "{project}" (not stir-dev) ---')
+
     print('--- Step 1: creating marker data (Listing + real uploaded photo) ---')
     marker = create_marker()
     assert marker_present_in_db(marker), 'marker not found in database right after creation'
@@ -98,8 +114,15 @@ def main():
 
     print('--- Step 3: destroying BOTH volumes outright ---')
     docker_compose('down')
-    run('docker', 'volume', 'rm', 'stir-dev_postgres_data', 'stir-dev_minio_data')
-    print('Volumes removed:', subprocess.run(['docker', 'volume', 'ls'], cwd=ROOT, capture_output=True, text=True).stdout.count('stir-dev'), 'stir-dev volumes remain (expect 0)')
+    # Derived from the verified project, never hardcoded - this used to literally say
+    # 'stir-dev_postgres_data'/'stir-dev_minio_data' regardless of what project was actually
+    # targeted, which would delete the real stir-dev volumes if they happened to still exist
+    # under those names. See the INT-P1-002 note in this file's module docstring.
+    pg_volume = f'{project}_postgres_data'
+    minio_volume = f'{project}_minio_data'
+    assert 'stir-dev' not in (pg_volume, minio_volume), 'refusing to remove a stir-dev-named volume'
+    run('docker', 'volume', 'rm', pg_volume, minio_volume)
+    print('Volumes removed:', pg_volume, minio_volume)
 
     print('--- Step 4: bringing the stack back up EMPTY ---')
     docker_compose('up', '-d')
