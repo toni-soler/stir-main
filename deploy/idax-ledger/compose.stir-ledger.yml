@@ -6,11 +6,13 @@
 #     -f deploy/idax-ledger/compose.stir-ledger.yml up -d --wait
 services:
   shell:
+    command:
+      - --idax.service-auth.issuer-enabled=true
+      - --idax.service-auth.issuer=idax-service
+      - --idax.service-auth.private-key-location=file:/run/secrets/service_private_key
     environment:
       # The platform issues SERVICE tokens only when enabled; the signing key is dedicated (not the user JWT key).
-      # Nested Spring properties are set as one JSON document: environment names for camel-case record components do not
-      # bind reliably, and the service key must not be left empty (the shell then refuses to start).
-      SPRING_APPLICATION_JSON: '{"idax":{"service-auth":{"issuer-enabled":true,"issuer":"idax-service","private-key-location":"file:/run/secrets/service_private_key"}}}'
+      # The shell's service-key record binds from command-line arguments (see run-shell.sh), which is verified.
     secrets: [service_private_key]
   ostris:
     environment:
