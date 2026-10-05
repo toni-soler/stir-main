@@ -25,18 +25,22 @@ SECRETS = Path(os.environ.get('STIR_BROWSER_SECRETS', ROOT / '.local/secrets'))
 CHANNEL = os.environ.get('STIR_BROWSER_CHANNEL') or None
 
 
+# Text-like inputs: the type attribute may be absent in the STIR forms, so exclude the special types instead of requiring text.
+TEXT_INPUT = 'input:not([type=hidden]):not([type=password]):not([type=email]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=number]):not([type=date])'
+
+
 def field(page, label_text):
     """Control lookup for the STIR forms. Their labels are not associated with controls (no for/id) and carry help
     sentences, so label-based lookups mis-assign values. Each form has a stable document order: short text inputs and
     long text areas appear in the same sequence as their labels, so the control is chosen by kind and position."""
     kinds = {
-        'Nombre visible': "input[type=text]",
-        'Ubicación': "input[type=text]",
+        'Nombre visible': TEXT_INPUT,
+        'Ubicación': TEXT_INPUT,
         'Biografía breve': "textarea",
-        'Título': "input[type=text]",
+        'Título': TEXT_INPUT,
         'Descripción': "textarea",
         'Mensaje': "textarea",
-        'Buscar': "input[type=text]",
+        'Buscar': TEXT_INPUT,
     }
     return page.locator(kinds[label_text] + ":visible").first
 
