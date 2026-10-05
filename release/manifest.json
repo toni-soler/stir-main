@@ -1,7 +1,7 @@
 {
   "release": "STIR 0.5.0-rc1 - governed-state effectivity boundary (release candidate)",
   "stirVersion": "0.5.0-rc1",
-  "status": "RELEASE CANDIDATE READY FOR STIR.ES: YES (pre-production gates green). STIR.ES RELEASE: NOT DEPLOYED.",
+  "status": "RELEASE CANDIDATE 0.5.0-rc1 (STIR). Ledger integration DEV PARTIAL/BLOCKED. STIR.ES RELEASE: NOT DEPLOYED.",
   "builtOn": "DEV VM (devstires, SSH port 12522). No build, test, image or compose work ran on the Windows workstation.",
   "sourceCommits": {
     "stir-main": {
@@ -59,10 +59,31 @@
   },
   "config": {
     "revision": "stir-main 9bb85f1",
-    "compose": ["compose.yml", "compose.release.yml", "deploy/compose.release-images.yml (dress rehearsal pin)"],
+    "compose": [
+      "compose.yml",
+      "compose.release.yml",
+      "deploy/compose.release-images.yml (dress rehearsal pin)"
+    ],
     "faultTopology": "deploy/compose.audit-fault.yml - used only by the audit economic commit check, never in release",
-    "environmentNames": ["STIR_HTTP_PORT", "STIR_API_PORT", "STIR_PUBLIC_BASE_URL", "STIR_SITE_NAME", "OSTRIS_LEDGER_ENABLED (must be false)"],
-    "secretNames": ["postgres_password", "runtime_password", "governed_verifier_password", "stir_auditor_password", "jwt_private_key", "jwt_public_key", "bootstrap_token", "login_password", "storage_access_key", "storage_secret_key"],
+    "environmentNames": [
+      "STIR_HTTP_PORT",
+      "STIR_API_PORT",
+      "STIR_PUBLIC_BASE_URL",
+      "STIR_SITE_NAME",
+      "OSTRIS_LEDGER_ENABLED (must be false)"
+    ],
+    "secretNames": [
+      "postgres_password",
+      "runtime_password",
+      "governed_verifier_password",
+      "stir_auditor_password",
+      "jwt_private_key",
+      "jwt_public_key",
+      "bootstrap_token",
+      "login_password",
+      "storage_access_key",
+      "storage_secret_key"
+    ],
     "noSecretValuesRecorded": true
   },
   "validation": {
@@ -76,7 +97,10 @@
   "stirDevRehearsal": {
     "project": "stir-dev",
     "status": "CLEAN REBUILD FROM THE RELEASE IMAGES: YES",
-    "ports": {"proxy": "127.0.0.1:28089", "api": "127.0.0.1:28096"},
+    "ports": {
+      "proxy": "127.0.0.1:28089",
+      "api": "127.0.0.1:28096"
+    },
     "bootOrder": "governed-verifier started before stir on an empty database and stayed healthy (after the catalog-writer fix)",
     "smoke": "readiness 200, /api/stir/instance 200 (stirVersion 0.5.0-rc1), shell login 200, governed write without token 401 at the verifier, audit CLEAR, restarts 0"
   },
@@ -89,5 +113,74 @@
   "evidenceLocations": {
     "devVm": "/home/stir-admin/stir-claude-runs/ (gate-RC-FINAL-20261004T183139Z, flyway-final-20261004T180157Z, frontend-final-20261004T180712Z, backend-verify-rc2-20261004T182536Z, stir-dev-rebuild-final-20261004T183428Z, audit-fault-20261004T175428Z)",
     "failedAttemptsKept": "stir-dev-rebuild-20261004T181633Z (verifier catalog-writer defect reproduced and kept as evidence)"
+  },
+  "ledgerIntegration": {
+    "status": "DEV PARTIAL: controlled STIR->osTRIS commit and disabled-delivery semantics PASS; end-to-end ledger anchoring BLOCKED on the platform service-token endpoint (anonymous request rejected by the vendored idax-shell security chain). OSTRIS_LEDGER_ENABLED=false in stir-dev.",
+    "xrplPrivateNetwork": {
+      "project": "idax-ledger-dev",
+      "networkId": 2181844733,
+      "topology": "3 validators + 1 non-validating API node",
+      "subnet": "172.27.0.0/24 fixed addresses 172.27.0.11-14",
+      "rpcBinding": "127.0.0.1 only",
+      "publicPeers": false,
+      "coldStartConvergence": "PASS (two full-stop, single-start runs, identical historical ledger hash)",
+      "xrpldSource": "3.3.0 commit 00a178fb92ca49521b937ae1a99d863765ea8a90",
+      "xrpldImageId": "sha256:fb1005cb0856eef98537152d20d169edb1f5286e8d232091e7a472ea67e0c137"
+    },
+    "ledgerService": {
+      "image": "stir-release/ledger:rc",
+      "imageId": "sha256:13cda980a6c0a8f1f034e053f508d781c9e0f98350b33515dc2a384736a056f6",
+      "database": "dedicated PostgreSQL 17 (idax_core, idax_ledger)",
+      "serviceAuth": "service-key trust only; user key not used for service tokens",
+      "negativeChecks": "no token 401; ordinary user token 401"
+    },
+    "tenantMirror": {
+      "tenantReference": "stir-ledger-dev",
+      "semantics": "referential routing record; platform row wins; no automatic delete; fields limited to id, code, name, status, mfa_required, timestamps"
+    },
+    "serviceGrant": {
+      "principal": "ostris-ledger-delivery",
+      "audience": "idax-ledger",
+      "permissions": [
+        "LEDGER_PROOF_CREATE",
+        "LEDGER_READ",
+        "LEDGER_PROOF_VERIFY"
+      ],
+      "mechanism": "canonical service_principal_create_grant in one transaction with tenant context",
+      "forbidden": "admin, wildcard, governance, role management, SuperAdmin, unrelated writes"
+    },
+    "anchoring": {
+      "status": "XRPL account funded on DEV only; no production funding",
+      "anchorAccountSecretRecorded": false
+    },
+    "openBlockers": [
+      "POST /api/service-auth/token is not permitted anonymously in the vendored idax-shell SecurityConfiguration (needs a platform decision)",
+      "ProtocolProofOutboxStore treats 401/403 as permanent; FAILED_PERMANENT rows are terminal and have no reviewed replay path",
+      "The stir-dev outbox row from the enabled attempt (9af43d9a-1a62-4a67-9cc7-fcd247292434) is FAILED_PERMANENT with LEDGER_HTTP_403"
+    ]
+  },
+  "productionRunbook": {
+    "status": "DRAFT - NOT EXECUTED",
+    "runbook": "release/PRODUCTION_DEPLOYMENT_OPERATOR_RUNBOOK.md",
+    "checklist": "release/PRODUCTION_DEPLOYMENT_CHECKLIST.md",
+    "executedByClaude": false
+  },
+  "releasePackage": {
+    "status": "DEV ARCHIVES CREATED; not transferred; not verified after transfer",
+    "location": "DEV VM devstires: ~/stir-release-archives/2026-10-05/ (not in Git)",
+    "archives": {
+      "ledger-xrpl-rc.tar": {
+        "sha256": "5ad134a7dfdb84a9179c80e154827f131dad1b1f0cb888c704ec28ab5d71ff03"
+      },
+      "silo-rc.tar": {
+        "sha256": "11a170c7e978f3df860ac204dd647388941624ec864b0c1a83047986d7fbbf70"
+      },
+      "stir-core-rc.tar": {
+        "sha256": "5a0c23c74446f5a3d872f48ba4b8d1c9dc6627a5f9ba019bd20e0724364bfc6a"
+      }
+    },
+    "contents": "12 release image tags (stir-release/* rc, idax/xrpld:3.3.0-source, stir-claude/silo RELEASE.2026-09-16...)",
+    "excludedByDesign": "validator keys, node keys, anchor seed, JWT private material, DB passwords, client secrets live in runtime secret directories, not in images",
+    "secretScan": "NOT PERFORMED on layer contents; exclusion is by construction (secrets are mounted at runtime, not baked in)"
   }
 }
