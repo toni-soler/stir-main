@@ -23,6 +23,9 @@ import sys
 
 VALIDATORS = ["validator-01", "validator-02", "validator-03"]
 API_NODE = "api-01"
+# Fixed addresses on the XRPL subnet (deploy/idax-ledger/compose.xrpl.yml). Peers are configured by address so that startup
+# order and DNS resolution timing cannot leave a node without its fixed peers.
+NODE_IPS = {"validator-01": "172.27.0.11", "validator-02": "172.27.0.12", "validator-03": "172.27.0.13", "api-01": "172.27.0.14"}
 
 
 def run(args, **kwargs):
@@ -91,6 +94,8 @@ def main():
             config = re.sub(r"\[validator_token\]\s*__VALIDATOR_TOKEN__\s*", "", config)
         else:
             config = config.replace("__VALIDATOR_TOKEN__", token)
+        for name, address in NODE_IPS.items():
+            config = config.replace(f"{name} 51235", f"{address} 51235")
         if "__" in config:
             raise SystemExit(f"unresolved template placeholder for {node}")
         (config_dir / "xrpld.cfg").write_text(config)
