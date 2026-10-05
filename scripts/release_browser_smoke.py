@@ -125,6 +125,8 @@ def main():
             expect(ana.get_by_text('Puedo hacer 20kg al mismo precio')).to_be_visible()
 
             pedro.reload()
+            pedro.get_by_role('button', name='Mis negociaciones', exact=True).click()
+            pedro.get_by_role('button', name='Ver', exact=True).click()
             expect(pedro.get_by_text('Puedo hacer 20kg al mismo precio')).to_be_visible()
             pedro.get_by_role('button', name='Aceptar', exact=True).click()
             expect(pedro.get_by_role('heading', name='Acuerdo', exact=True)).to_be_visible()
