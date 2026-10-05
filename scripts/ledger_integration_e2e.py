@@ -38,7 +38,15 @@ def main():
     ana_login = request('/api/shell/v1/auth/login', 'POST', {'email': ana_email, 'password': ana_password})
     request(f'/api/shell/v1/tenants/{tenant}/roles/users/' + ana_login['user']['id'], 'PUT', {'roleIds': [role['id']]}, admin, 204)
     ana = request('/api/shell/v1/auth/login', 'POST', {'email': ana_email, 'password': ana_password})
-    pedro = make_user(admin, tenant, role['id'], 'pedro', suffix)
+    # Economic activation is also gated by tenant owner/admin authority in this build (a plain member with the same permissions
+    # receives 403), so both participants of this controlled transaction are tenant administrators.
+    pedro_email = f'pedro-{suffix}@stir.test'
+    pedro_password = secrets.token_urlsafe(24)
+    request(f'/api/shell/v1/tenants/{tenant}/users', 'POST', {'email': pedro_email, 'displayName': 'pedro', 'authProvider': 'local',
+            'subject': pedro_email, 'password': pedro_password, 'role': 'admin', 'enabled': True}, admin, expected=(200, 201))
+    pedro_login = request('/api/shell/v1/auth/login', 'POST', {'email': pedro_email, 'password': pedro_password})
+    request(f'/api/shell/v1/tenants/{tenant}/roles/users/' + pedro_login['user']['id'], 'PUT', {'roleIds': [role['id']]}, admin, 204)
+    pedro = request('/api/shell/v1/auth/login', 'POST', {'email': pedro_email, 'password': pedro_password})
     request(base + '/participants/me', 'PUT', {'displayName': 'Ana ' + suffix, 'bio': 'Ledger E2E', 'location': 'Girona'}, ana['accessToken'])
     request(base + '/participants/me', 'PUT', {'displayName': 'Pedro ' + suffix, 'bio': 'Ledger E2E', 'location': 'Girona'}, pedro['accessToken'])
     request(base + '/economic/marketplace/bootstrap', 'POST', {'communityName': 'Ledger E2E ' + suffix, 'unitCode': 'LED', 'unitScale': 0},
