@@ -1,8 +1,12 @@
 # STIR production deployment — operator runbook (IDAX Ledger / private XRPL)
 
-Status: **DRAFT — NOT EXECUTED.** Written from DEV evidence (see `deploy/idax-ledger/README.md`). Nothing in this
-document has been run against production. Every production command below is for the operator to run on the host named in
-its `RUN ON:` label. The author did not and must not run these commands.
+Status: **READY FOR OPERATOR EXECUTION.** Written from DEV evidence (see `deploy/idax-ledger/README.md` and
+`release/manifest.json`'s `ledgerIntegration` section for exact identifiers from the live DEV proof). Nothing in this
+document has been run against production — the author did not and must not run these commands; every production command
+below is for the operator to run on the host named in its `RUN ON:` label. "Ready" means every decision this document
+can resolve generically has been resolved into an explicit check or formula (section 2); what remains are legitimate
+environment inputs only — hostnames, IPs, production secrets, disk paths, validator machine placement, and the result of
+the existing-network discovery in section 4 — not open architecture questions.
 
 Companion: `release/PRODUCTION_DEPLOYMENT_CHECKLIST.md` (tick-box version of section 14).
 
@@ -27,17 +31,54 @@ Out of scope: any public XRPL network (mainnet/testnet); any public peer; FFM co
 Anchoring rule: the chain receives a proof digest and a reference (`ostris:v1:<sha256>`). It never receives agreement
 text, prices, participant identities or any other business field.
 
+Ledger enablement is per tenant, explicit, never automatic (section 8.3). A tenant with no grant stays denied — that is
+the correct, expected state for a tenant that was never meant to be ledger-enabled, not an incident.
+
 ---
 
-## 2. Decisions the operator must make BEFORE any step (record them in the checklist)
+## 2. Deployment-time checkpoints (resolved into checks/formulas, not open decisions)
 
-| # | Decision | Options | Default in this runbook |
-|---|---|---|---|
-| D1 | Topology profile | **A** single-host technical MVP (all XRPL nodes on `PROD-STIR`); **B** distributed (one validator per host) | Profile A for the first production activation only if the operator accepts that one host failure stops anchoring. Profile B is the target. |
-| D2 | Genesis / network identity | Create a **new** private network (network id unique, never reused from DEV) | New network. The existence check in section 4 must pass first. |
-| D3 | Validator independence | Who operates each validator; separate credentials, separate hosts | Must be documented. Profile A records a known single-operator risk. |
-| D4 | Ledger retention | Keep all validated history (`ledger_history=full`) or prune | Keep full history for the MVP. See section 10 for measured growth. |
-| D5 | Anchoring account funding | Amount of XRP reserved for AccountSet fees | Fund only from the production funding procedure in section 6. |
+Each former open decision is now a checkpoint with a deterministic answer. The only inputs left are environment facts
+(how many hosts exist, what they measure) — never an architectural choice made up on deployment day.
+
+**CP1 — Topology profile.**
+```
+CHECK: how many hosts, each under independent operational control, are available to run an XRPL validator?
+  1 host available   -> Profile A (single-host). Record the known risk: one host failure stops anchoring.
+                         Acceptable ONLY for the first production activation, not as a permanent target.
+  >= 3 hosts available -> Profile B (distributed, one validator per host). This is the target topology.
+  2 hosts available   -> STOP. Three validators need three independent hosts for a meaningful 2-of-3 quorum;
+                         two hosts means one operator effectively controls a majority. Get a third host or use
+                         Profile A explicitly (and record why).
+```
+
+**CP2 — Genesis / network identity.** Always create a **new** private network; never reuse a DEV network id. Resolved
+by the mandatory check in section 4 — there is nothing left to decide, only to run and read the result.
+
+**CP3 — Validator independence.** Not a decision: a record. Before section 6, fill in this table (hostname/operator per
+validator) in the checklist. If any two rows share an operator or host, that is CP1's single-host case, not a silent
+Profile B.
+
+**CP4 — Ledger retention.**
+```
+CHECK (after 24h of real load, section 10):
+  retention_days_possible = (disk_free_bytes * 0.5) / (measured_daily_growth_bytes)
+  IF retention_days_possible < 30:
+      STOP. Either add disk before activation, or get explicit operator sign-off to accept a shorter
+      guaranteed-retention window than 30 days. Do not silently prune history to make the number look fine.
+  ELSE:
+      keep ledger_history=full (the DEV default). No pruning configuration is defined by this runbook.
+```
+
+**CP5 — Anchoring account funding.** Measured live on the DEV network (`server_state`): `reserve_base` = 10 XRP,
+`reserve_inc` = 2 XRP, `base_fee` = 10 drops (0.00001 XRP) — this private network kept XRPL's standard mainnet-like
+reserve/fee economics, nothing reduced.
+```
+fund the anchoring account with: 10 XRP (base reserve, never spent) + margin.
+1 XRP of margin covers roughly 100,000 anchor transactions at base_fee each - more than enough for any
+realistic production anchor volume between funding top-ups. Re-check server_state after Profile B's
+network is up in case production fee/reserve settings were deliberately set differently from DEV.
+```
 
 ---
 
@@ -170,14 +211,21 @@ Create the principal and the grant **only** through the canonical platform funct
 (`service_principal_create`, `service_principal_create_grant`) inside one transaction that sets the tenant context.
 Never insert into `service_principal*` tables directly.
 
-Required grant, exactly: principal `ostris-ledger-delivery`, tenant `<PRODUCTION_TENANT_SLUG>`, audience `idax-ledger`,
-permissions `LEDGER_PROOF_CREATE`, `LEDGER_READ`, `LEDGER_PROOF_VERIFY`.
+**Ledger enablement is explicit per tenant — there is no wildcard, all-tenants, or "surrogate" grant.** A separate,
+narrow grant exists for every tenant that may deliver proofs: `ostris-ledger-delivery` + that tenant's own id + audience
+`idax-ledger` + exactly `LEDGER_PROOF_CREATE`, `LEDGER_READ`, `LEDGER_PROOF_VERIFY` (or the reduced set already proven
+sufficient). A grant scoped to one tenant (e.g. a dedicated routing/test tenant) never authorizes delivery for any other
+tenant's commits — confirmed live on DEV: the same client credentials against a different, real, existing tenant with no
+grant of its own were rejected with the identical uniform 401 as an invalid credential. See section 8.4 for the full
+per-tenant enable/disable procedure; this subsection is only the mechanism the grant itself uses.
 
-Forbidden in any grant: admin, tenant-wide wildcards, governance capabilities, role management, SuperAdmin, and write
-capabilities unrelated to proof delivery and verification.
+Forbidden in any grant: admin, tenant-wide wildcards, an all-tenants/global grant, governance capabilities, role
+management, SuperAdmin, and write capabilities unrelated to proof delivery and verification.
 
 The credential secret is generated on the host, stored under `<RUNTIME>/secrets/ostris_ledger_client_secret` (mode 600),
-and only its BCrypt hash is stored in the platform database. Never record the value.
+and only its BCrypt hash is stored in the platform database. Never record the value. The SAME credential secret is reused
+across every tenant's grant (it authenticates the delivery worker itself, not a specific tenant) — only the grant row
+differs per tenant.
 
 ### 8.2 Ledger tenant mirror (referential only)
 
@@ -188,7 +236,83 @@ memberships, roles, Seven Keys state, SuperAdmin state, secrets or credentials. 
 authorization source. If the platform row and mirror disagree, the platform row wins; the mirror is never deleted
 automatically.
 
-### 8.3 Start order
+### 8.3 Tenant ledger enablement lifecycle
+
+Ledger activation is per tenant and explicit. Never provision every tenant automatically — a tenant that has not been
+through this procedure must stay denied, and that denial is the correct, expected outcome, not a bug to clean up.
+
+#### ENABLE LEDGER FOR TENANT `<tenant>`
+
+`RUN ON: PROD-STIR` for all steps.
+
+1. **Verify the tenant exists in the platform and is the real originating tenant you intend** (not a routing/test
+   surrogate for it):
+   ```sh
+   # superuser session required
+   curl -s -H "Authorization: Bearer <SUPERUSER_TOKEN>" https://<stir-host>/api/shell/v1/platform/tenants \
+     | python3 -c "import json,sys;[print(t['id'],t['code'],t['name']) for t in json.load(sys.stdin)]"
+   ```
+   Confirm `<tenant>`'s id and code match what you expect before continuing.
+2. **Create the minimal tenant mirror in IDAX Ledger** (referential only — never users, memberships, roles, Seven Keys,
+   SuperAdmin state, secrets or credentials):
+   ```sh
+   PLATFORM_PG=<platform_postgres_container> LEDGER_PG=<ledger_postgres_container> TENANT_ID=<tenant-uuid> \
+     sh deploy/idax-ledger/mirror_platform_tenant.sh
+   ```
+3. **Create the tenant-scoped grant** through the canonical function only, inside one transaction that sets the tenant
+   context — never an ad-hoc `INSERT`:
+   ```sql
+   BEGIN;
+   SELECT set_config('app.tenant_id', '<tenant-uuid>', true);
+   SELECT idax_core.service_principal_create_grant(
+     gen_random_uuid(), '<ostris-ledger-delivery-service-principal-id>', '<tenant-uuid>'::uuid,
+     'idax-ledger', ARRAY['LEDGER_PROOF_CREATE','LEDGER_READ','LEDGER_PROOF_VERIFY'], '<operator-identity>');
+   COMMIT;
+   ```
+4. **Verify the grant** exists and carries exactly the intended permissions, nothing wider:
+   ```sql
+   SELECT tenant_id, audience, permissions, enabled FROM idax_core.service_principal_grant
+     WHERE service_principal_id = '<...>' AND tenant_id = '<tenant-uuid>';
+   ```
+5. **Run one safe proof test** end to end: a single controlled, real, signed transaction through the product path for
+   this tenant (same shape as `scripts/ledger_integration_e2e.py`), and confirm it reaches `ANCHORED` with a validated
+   XRPL transaction (see section 9's acceptance criteria). On DEV, this exact sequence (mirror → grant → proof) was
+   proven for the platform's own `stir` tenant: a direct token request against a **different**, real, existing tenant
+   with no grant of its own was rejected with the same uniform 401 as any other invalid credential — the isolation is
+   structural, not just untested.
+6. **Record provisioning evidence** in the checklist: tenant id/code, grant id, timestamp, operator identity, the proof
+   transaction's identifiers (agreement id, osTRIS transaction id, outbox id, ledger proof id, XRPL transaction hash,
+   validated ledger index).
+
+#### DISABLE LEDGER FOR TENANT `<tenant>`
+
+`RUN ON: PROD-STIR`
+
+Disabling future delivery must never erase history. Do not delete or alter any existing row in `ostris.journal_transaction`,
+`ostris.protocol_proof_outbox`, `idax_ledger.ledger_proof`, `idax_ledger.ledger_submission`, or the audit tables. Prior
+anchors, proof records, audit evidence and osTRIS journal state are all permanent regardless of this action.
+
+1. Revoke the grant (never delete the row — this preserves the authorization history itself):
+   ```sql
+   BEGIN;
+   SELECT set_config('app.tenant_id', '<tenant-uuid>', true);
+   UPDATE idax_core.service_principal_grant SET revoked_at = now(), enabled = false
+     WHERE service_principal_id = '<...>' AND tenant_id = '<tenant-uuid>' AND revoked_at IS NULL;
+   COMMIT;
+   ```
+2. Confirm new delivery attempts for this tenant are rejected the same way an unprovisioned tenant is (uniform 401 — see
+   the DEV proof above).
+3. Any outbox row already `PENDING`/`FAILED_RETRYABLE` for this tenant at the moment of revocation will fail on its next
+   attempt (a now-missing grant, classified `FAILED_PERMANENT` like any other missing-grant case) and stays there,
+   correctly, until the tenant is re-enabled or an operator makes an explicit decision about it — never auto-cleaned.
+4. The ledger tenant mirror is left in place (it is routing/display metadata with no bearing on authorization; deleting
+   it would only break foreign-key integrity for the tenant's existing proof rows).
+
+A tenant re-enabled later (steps above, ENABLE again) simply gets a new grant row; its prior history, including any rows
+that failed while disabled, is unaffected and can go through the reviewed replay path (section "Failed outbox rows,
+tenant provisioning changes" below) if the operator decides those specific rows should now be retried.
+
+### 8.4 Start order
 
 `RUN ON: PROD-STIR`
 
@@ -210,14 +334,17 @@ OSTRIS_LEDGER_ENABLED=false   # stays false here
 
 ## 9. First ledger proof (controlled transaction)
 
-Enable delivery only after the service token path is confirmed. `RUN ON: PROD-STIR`.
+Enable delivery only after the service token path is confirmed AND at least one tenant has been through the section 8.3
+ENABLE procedure. `RUN ON: PROD-STIR`.
 
-1. Confirm the service-token endpoint answers the ostris principal with a valid token (a token request must succeed; do
-   not paste the token anywhere).
-2. Set `OSTRIS_LEDGER_ENABLED=true` in the override and recreate **only** the `ostris` service.
+1. Confirm the service-token endpoint answers the ostris principal with a valid token **for an enabled tenant** (a
+   token request must succeed; do not paste the token anywhere), and separately confirm it is refused for a tenant
+   that has no grant yet (same uniform 401 either way — see section 8.3 step 5).
+2. Set `OSTRIS_LEDGER_ENABLED=true` in the override and recreate **only** the `ostris` service. This flag turns the
+   delivery worker on globally; it does not by itself authorize any tenant — that is the grant from section 8.3.
 3. Run one controlled, real, signed transaction through the product path (the same flow as
-   `scripts/ledger_integration_e2e.py`, run against a production-approved test tenant, not a real business tenant unless
-   the operator explicitly approves it).
+   `scripts/ledger_integration_e2e.py`, run against a production-approved, already-ENABLEd tenant — a production test
+   tenant if one exists, not a real business tenant unless the operator explicitly approves it).
 4. Verify on the database (read-only queries):
    - the `ostris.protocol_proof_outbox` row for the commit is `ANCHORED` (the success state in `ProtocolProofOutboxObservability`);
    - the proof digest matches the journal commit;
@@ -279,7 +406,9 @@ Stop and escalate (do not improvise) if any of these occur:
 - section 4 finds an existing network identity;
 - validators do not converge after the single start in section 7;
 - a token request is refused with an unexpected status after the grant in section 8.1 was applied;
-- a delivery returns a permanent failure for a valid proof (the outbox row is terminal and needs a reviewed replay path);
+- a delivery returns a permanent failure for a proof you believe should have succeeded (diagnose the real cause first —
+  wrong/missing tenant grant is the most common one; use section 15's reviewed replay only once the cause is actually
+  fixed, never as a first response);
 - the ledger database shows any row outside the expected tenant;
 - disk free falls below the section 10 threshold during activation.
 
@@ -298,11 +427,25 @@ Record every result in the checklist. Do not declare the release live until all 
 
 ---
 
-## 15. Known open items (carry forward, do not hide)
+## 15. Failed outbox rows and tenant provisioning changes
+
+`FAILED_PERMANENT` outbox rows are terminal and never retried automatically — by design, so a configuration/credential
+problem does not spin forever (see the non-negotiable retry classification above). The reviewed replay command
+(`POST /api/ostris/admin/ledger-outbox/{id}/replay`, permission `OSTRIS_LEDGER_OUTBOX_REPLAY`, human operator only —
+never a service principal) is the only way back, and it is **narrow**: it replays exactly the one row identified,
+records an immutable audit entry of the original failure first, and requeues it through the normal delivery pipeline.
+Proven live on DEV: three historical rows that failed before their tenant (`stir`) was ENABLEd were left untouched
+until the tenant went through section 8.3, then replayed successfully to `ANCHORED` with full history preserved.
+
+Do not grant a tenant, or replay a row, solely to make a stuck row go away. If a tenant is deliberately not
+ledger-enabled, its `FAILED_PERMANENT` rows are the **expected, correct** outcome — leave them. Only replay a row once
+its own tenant has gone through the real ENABLE procedure for a real reason, not as cleanup.
+
+## 16. Known open items (carry forward, do not hide)
 
 - AUD-012 (runtime credential can write governed state): MITIGATED — DETECTED ONLY, OPEN. Not closed by this release.
 - AUD-007: OPEN.
-- Permanent outbox rows (`FAILED_PERMANENT`) are terminal in the delivery store; there is no reviewed replay path yet.
-  A token-endpoint failure that is classified as permanent will not retry automatically after the cause is fixed.
-- Genesis, validator independence and retention (D2–D4) are operator decisions, not decided by this document.
+- Genesis, validator independence and retention are now deployment-time checkpoints (section 2, CP1–CP5), not open
+  architecture decisions — but their actual answers (host count, measured growth, measured fee/reserve) are still
+  environment inputs this document cannot supply in advance.
 - Production has not been started. This release is not deployed to stir.es.

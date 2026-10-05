@@ -157,7 +157,59 @@
       "POST /api/service-auth/token is not permitted anonymously in the vendored idax-shell SecurityConfiguration (needs a platform decision)",
       "ProtocolProofOutboxStore treats 401/403 as permanent; FAILED_PERMANENT rows are terminal and have no reviewed replay path",
       "The stir-dev outbox row from the enabled attempt (9af43d9a-1a62-4a67-9cc7-fcd247292434) is FAILED_PERMANENT with LEDGER_HTTP_403"
-    ]
+    ],
+    "tenantModel": {
+      "rule": "Ledger enablement is explicit per tenant. No wildcard/all-tenants grant exists or is permitted.",
+      "enabledTenants": [
+        {
+          "code": "stir-ledger-dev",
+          "id": "709ee6fd-adf5-4edd-b269-a79de3dadb70",
+          "grantId": "<original approved grant, see earlier phase>",
+          "purpose": "dedicated routing/test tenant for this integration"
+        },
+        {
+          "code": "stir",
+          "id": "bbb25b59-0ac1-45f1-8701-b261e67bd579",
+          "grantId": "516fdb08-7af5-4991-a1ab-bef16aac497d",
+          "purpose": "the platform's real default DEV working tenant - confirmed legitimate by its active use for all demo/E2E traffic in this deployment"
+        }
+      ],
+      "deniedTenantProof": {
+        "tenantCode": "stir-ledger-unprovisioned-test",
+        "tenantId": "c99c0c78-075d-4b8f-aa6b-9521d010b0b7",
+        "created": "via the canonical platform tenant-creation API, deliberately given no ledger grant",
+        "result": "a direct token request with the real, valid ostris-ledger-delivery credentials against this tenant was rejected with the same uniform 401 as any invalid credential - proves grant-based isolation, not mere tenant existence, is what the token endpoint enforces",
+        "leftInPlace": "yes, as a permanent negative control; not deleted"
+      },
+      "historicalRowsRecoveredAfterEnablement": [
+        {
+          "id": "9af43d9a-1a62-4a67-9cc7-fcd247292434",
+          "finalStatus": "ANCHORED",
+          "proofReference": "e0c46b9e-bb1b-48fa-96b0-147ff05124bd"
+        },
+        {
+          "id": "eb27908f-d592-469f-9440-39775bab7fad",
+          "finalStatus": "ANCHORED",
+          "proofReference": "49699903-1715-4b7a-9408-0ff3458b1382"
+        },
+        {
+          "id": "cf39075a-a2a7-4568-b9a7-11ca5fca47b6",
+          "finalStatus": "ANCHORED",
+          "proofReference": "4279065f-75e8-4d89-81eb-95a473d70b79"
+        }
+      ],
+      "finalProofFromPublishedMain": {
+        "note": "re-ran after merging to main 27d1da3, from a fresh sync of published GitHub main (not the feature branch)",
+        "stirAgreementId": "912872ed-11e2-4f28-9edf-8d4245d2aa8c (stir-ledger-dev tenant)",
+        "secondProofInStirTenant": {
+          "agreementId": "54a46068-887c-4c36-aabf-f13d9d8815c7",
+          "outboxStatus": "ANCHORED",
+          "ledgerProofId": "3efc9101-b37a-4dd9-afae-dae16d982ec0",
+          "xrplTransactionHash": "6770759EFCB37E7A92932DCD82CE4874CDB3EA3D2B415A3E3A5E82744BC6B0BF",
+          "xrplValidatedLedgerIndex": 6152
+        }
+      }
+    }
   },
   "productionRunbook": {
     "status": "DRAFT - NOT EXECUTED",
