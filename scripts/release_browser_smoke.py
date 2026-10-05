@@ -38,7 +38,7 @@ def field(page, label_text):
         'Mensaje': "textarea",
         'Buscar': "input[type=text]",
     }
-    return page.locator(kinds[label_text]).first
+    return page.locator(kinds[label_text] + ":visible").first
 
 
 def make_user(admin, tenant, role_id, label, suffix):
