@@ -6,7 +6,12 @@ Runs against a deployment's own demo tenant over the public HTTP API only (no da
 stir-dev). Two real participants negotiate, both sign the trade with their own Ed25519 keys, and the owner commits it.
 Prints only identifiers. The ledger side is read from the database by a separate evidence step.
 
-Environment: STIR_TEST_URL (proxy base, e.g. http://127.0.0.1:28089), STIR_LEDGER_SECRETS (directory with login_password).
+Environment: STIR_TEST_URL (proxy base, e.g. http://127.0.0.1:28089), STIR_LEDGER_SECRETS (directory with login_password),
+STIR_LEDGER_TENANT_CODE (optional - run against a specific platform tenant by its `code`, resolved through the
+superuser platform tenant listing, instead of the admin login's own default tenant. Needed because the
+ostris-ledger-delivery service-principal grant is scoped to one specific tenant: a transaction committed in any
+other tenant can never be delivered, by design - ServiceTokenIssuer.issue() requires the grant's tenant_id to match
+the claim's own tenant_id exactly).
 """
 import os
 import uuid
@@ -23,7 +28,16 @@ def main():
     admin_session = request('/api/shell/v1/auth/login', 'POST', {'email': 'admin@stir.test',
                             'password': (SECRETS / 'login_password').read_text().strip()})
     admin = admin_session['accessToken']
-    tenant = admin_session['tenants'][0]['id']
+    tenant_code = os.environ.get('STIR_LEDGER_TENANT_CODE')
+    if tenant_code:
+        platform_tenants = request('/api/shell/v1/platform/tenants', token=admin)
+        matches = [t for t in platform_tenants if t.get('code') == tenant_code]
+        if not matches:
+            raise SystemExit(f'No platform tenant with code {tenant_code!r} - it must already exist '
+                              '(this script never creates the tenant itself, only an admin user inside it).')
+        tenant = matches[0]['id']
+    else:
+        tenant = admin_session['tenants'][0]['id']
     base = f'/api/stir/tenants/{tenant}'
     suffix = uuid.uuid4().hex[:8]
     role = request(f'/api/shell/v1/tenants/{tenant}/roles', 'POST', {'key': 'ledger_e2e_' + suffix, 'name': 'Ledger integration E2E',
