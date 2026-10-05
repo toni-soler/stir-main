@@ -8,9 +8,9 @@ services:
   shell:
     environment:
       # The platform issues SERVICE tokens only when enabled; the signing key is dedicated (not the user JWT key).
-      IDAX_SERVICE_AUTH_ISSUER_ENABLED: "true"
-      IDAX_SERVICE_AUTH_ISSUER: idax-service
-      IDAX_SERVICE_AUTH_PRIVATE_KEY_LOCATION: file:/run/secrets/service_private_key
+      # Nested Spring properties are set as one JSON document: environment names for camel-case record components do not
+      # bind reliably, and the service key must not be left empty (the shell then refuses to start).
+      SPRING_APPLICATION_JSON: '{"idax":{"service-auth":{"issuer-enabled":true,"issuer":"idax-service","private-key-location":"file:/run/secrets/service_private_key"}}}'
     secrets: [service_private_key]
   ostris:
     environment:
