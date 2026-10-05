@@ -10,10 +10,11 @@ services:
       - --idax.service-auth.issuer-enabled=true
       - --idax.service-auth.issuer=idax-service
       - --idax.service-auth.private-key-location=file:/run/secrets/service_private_key
+      - --idax.service-auth.public-key-location=file:/run/secrets/service_public_key
     environment:
       # The platform issues SERVICE tokens only when enabled; the signing key is dedicated (not the user JWT key).
-      # The shell's service-key record binds from command-line arguments (see run-shell.sh), which is verified.
-    secrets: [service_private_key]
+      # The service JWT encoder builds the signing key pair from BOTH the public and the private key location.
+    secrets: [service_private_key, service_public_key]
   ostris:
     environment:
       OSTRIS_LEDGER_ENABLED: "true"
@@ -28,4 +29,5 @@ networks:
     external: true
 secrets:
   service_private_key: {file: ./.local/secrets/service_private_key}
+  service_public_key: {file: ./.local/secrets/service_public_key.pem}
   ostris_ledger_client_secret: {file: ./.local/secrets/ostris_ledger_client_secret}
