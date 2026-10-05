@@ -104,6 +104,8 @@ def main():
             field(ana, 'Título').fill(title)
             field(ana, 'Descripción').fill('Tomates San Marzano maduros')
             ana.get_by_role('button', name='Guardar y añadir fotos', exact=True).click()
+            expect(ana.get_by_text('¡Publicación guardada!')).to_be_visible()
+            ana.get_by_role('button', name='Listo', exact=True).click()
             expect(ana.locator('.stir-card').filter(has=ana.get_by_role('button', name=title, exact=True))).to_be_visible()
 
             login(pedro, pedro_email, pedro_password)
