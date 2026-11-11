@@ -1,12 +1,10 @@
 # STIR production deployment — operator runbook (IDAX Ledger / private XRPL)
 
-Status: **READY FOR OPERATOR EXECUTION.** Written from DEV evidence (see `deploy/idax-ledger/README.md` and
-`release/manifest.json`'s `ledgerIntegration` section for exact identifiers from the live DEV proof). Nothing in this
-document has been run against production — the author did not and must not run these commands; every production command
-below is for the operator to run on the host named in its `RUN ON:` label. "Ready" means every decision this document
-can resolve generically has been resolved into an explicit check or formula (section 2); what remains are legitimate
-environment inputs only — hostnames, IPs, production secrets, disk paths, validator machine placement, and the result of
-the existing-network discovery in section 4 — not open architecture questions.
+Status: **NOT READY - two open issues found on DEV on 2026-11-11 (section 16).** A full simultaneous restart of the
+XRPL nodes does not reliably resume validation, and three validators tolerate zero validator failures. Both must be
+decided before this runbook is executed. Nothing in this document has been run against production - the author did not
+and must not run these commands; every production command below is for the operator to run on the host named in its
+`RUN ON:` label. The capacity figures in section 10 are measured over 23 days, not extrapolated.
 
 Companion: `release/PRODUCTION_DEPLOYMENT_CHECKLIST.md` (tick-box version of section 14).
 
@@ -46,11 +44,13 @@ Each former open decision is now a checkpoint with a deterministic answer. The o
 CHECK: how many hosts, each under independent operational control, are available to run an XRPL validator?
   1 host available   -> Profile A (single-host). Record the known risk: one host failure stops anchoring.
                          Acceptable ONLY for the first production activation, not as a permanent target.
-  >= 3 hosts available -> Profile B (distributed, one validator per host). This is the target topology.
-  2 hosts available   -> STOP. Three validators need three independent hosts for a meaningful 2-of-3 quorum;
-                         two hosts means one operator effectively controls a majority. Get a third host or use
-                         Profile A explicitly (and record why).
+  >= 3 hosts available -> Profile B (distributed, one validator per host).
+  2 hosts available   -> STOP. Get a third host or use Profile A explicitly (and record why).
 ```
+Three validators give host separation but NO fault tolerance: xrpld requires 80% of the trusted validators, and
+`server_info` on DEV reports `validation_quorum: 3` with three validators. One validator down, or one validator that
+refuses to validate, stops anchoring for everyone. Tolerating one failed validator needs five (quorum 4). Whether
+production starts with three or five is an open decision (section 16).
 
 **CP2 — Genesis / network identity.** Always create a **new** private network; never reuse a DEV network id. Resolved
 by the mandatory check in section 4 — there is nothing left to decide, only to run and read the result.
@@ -61,7 +61,8 @@ Profile B.
 
 **CP4 — Ledger retention.**
 ```
-CHECK (after 24h of real load, section 10):
+CHECK (before activation, with the per-node figures of section 10; re-check after 24h of real load):
+  measured_daily_growth_bytes = sum over the nodes on this disk of (ledger data per day + log budget / KEEP_DAYS)
   retention_days_possible = (disk_free_bytes * 0.5) / (measured_daily_growth_bytes)
   IF retention_days_possible < 30:
       STOP. Either add disk before activation, or get explicit operator sign-off to accept a shorter
@@ -195,7 +196,19 @@ python3 <REPO>/deploy/idax-ledger/xrpl_health.py
 
 Expected: validators `proposing`, at least 2 peers each, API node `full`, all validated ledger hashes identical.
 
-**Do not restart nodes individually to force peering.** If convergence fails, go to section 13.
+`xrpl_health.py` passes only if the validated ledger advances on every node and all nodes agree on its hash. Node
+state alone (`proposing`, peers) is not evidence of a working network.
+
+**Known limitation (DEV, 2026-11-11): a simultaneous start is not reliable once the network has history.** Nodes that
+stopped at different validated ledgers (observed after disk exhaustion, and again after an ordinary `docker compose up`
+recreate: tips 585102 and 585103) start building from the lowest tip; the nodes holding the later validated ledger log
+"Not validating incompatible with valid ledger" and, with a quorum of three out of three, nothing validates again. The
+two cold restarts that passed on 2026-10-05 were on a network a few thousand ledgers old and do not establish the
+general case.
+
+Recovery that worked twice on DEV, no data touched: stop all nodes; start one node that holds the highest validated
+ledger; wait about 40 seconds; start the other nodes that hold it; start the lagging node last; run `xrpl_health.py`.
+This is a manual sequence and is not acceptable as the production restart behaviour - see section 16.
 
 Keep `ledger_history=full` (D4). Do not run `docker compose down -v` on the XRPL project: it destroys the ledger.
 
@@ -355,20 +368,38 @@ ENABLE procedure. `RUN ON: PROD-STIR`.
 
 ---
 
-## 10. Retention and capacity (measured on DEV, must be re-measured on production)
+## 10. Retention and capacity (measured on DEV over 23 days; re-measure on production)
 
-Measured on DEV on 2026-10-05 (single 60-second sample, validator data directory and ledger database):
+Measured on DEV from 2026-10-05 to 2026-10-28, network idle except for a handful of anchors, `ledger_history=full`:
 
-- Validated ledger progression: about 20 ledgers per minute at the DEV idle baseline (seq 2302 → 2322 in 60 s).
-- Node data directory: about 22 MB per validator after the cold-restart test; ledger SQLite WAL about 2 MB.
-- Ledger PostgreSQL database: about 12 MB.
-- Host disk: 95 GB volume, 41 GB free on DEV.
+| Per node | Measured | Per day | Per year |
+|---|---|---|---|
+| Ledger data (NuDB 5.0 GB + SQLite 0.23 GB at ledger 584,970) | 5.2 GB in 23.5 days | about 0.22 GB | about 81 GB |
+| Validator debug log, uncompressed, `log_level warning` | 2.8 GB in 23.5 days | about 0.12 GB | bounded by rotation |
+| API node debug log, uncompressed | 0.29 GB in 23.5 days | about 0.012 GB | bounded by rotation |
 
-These numbers are a starting point only. Production must measure growth for at least 24 hours under real load and size
-the disk for the agreed retention window (D4) plus 2× headroom. Do not extrapolate the 60-second sample.
+- The network closes about 17 ledgers per minute whether or not anything is anchored, about 9 KB per ledger per node.
+  Growth is driven by time, not by STIR traffic.
+- Logs: `deploy/idax-ledger/xrpld-entrypoint.sh` rotates daily (or at `XRPLD_LOG_MAX_MB`, default 512), compresses
+  (measured ratio about 3.7:1) and deletes after `XRPLD_LOG_KEEP_DAYS` (default 7). Budget **0.5 GB per validator** and
+  0.1 GB for the API node. Raising the log level for diagnosis raises this; the size trigger still bounds each file.
+- Disk per node for full history: `0.22 GB x days_of_history + 0.5 GB logs`, plus 2x headroom. One year: about 165 GB
+  per node with headroom. Profile A (four nodes on one disk): about 0.9 GB per day, about 650 GB for one year with
+  headroom.
+- The earlier figures in this section (22 MB per validator, from a 60-second sample) were wrong by two orders of
+  magnitude as a sizing basis and have been removed.
 
-Alert thresholds to configure before activation (operator-defined): disk free below 20%; validator data growth above the
-measured 24-hour projection; ledger outbox `FAILED_RETRYABLE` count growing for more than 15 minutes.
+xrpld stops itself when less than 512 MB is free ("Out of transaction DB space"). Each node then stops at a different
+moment and persists a different last validated ledger, which is the condition that prevents an unattended restart
+(section 7). Disk exhaustion must therefore be prevented, not recovered from.
+
+Alert thresholds to configure before activation: disk free below 20% (page), below 10% (stop anchoring and act);
+ledger outbox `FAILED_RETRYABLE` count growing for more than 15 minutes; validated ledger not advancing for 60 seconds
+(`xrpl_health.py` exit status).
+
+Pruning history (`online_delete`) on the validators while one full-history node serves verification would cut growth
+by about three quarters, but the IDAX Ledger service currently reads the validators directly
+(`IDAX_LEDGER_XRPL_NODE_0x_URL`), so it is a design change, not a setting. Not applied; open decision (section 16).
 
 ---
 
@@ -445,6 +476,13 @@ its own tenant has gone through the real ENABLE procedure for a real reason, not
 
 - AUD-012 (runtime credential can write governed state): MITIGATED — DETECTED ONLY, OPEN. Not closed by this release.
 - AUD-007: OPEN.
+- **Restart behaviour (blocking).** A full simultaneous restart can leave the network permanently unvalidated
+  (section 7). Needs a decision: an automated ordered start in `start_xrpl.sh` plus a rule for host reboots, or a
+  different startup mode for xrpld, investigated and tested repeatedly on a network with history.
+- **Validator count (blocking).** Three validators means quorum three: no tolerance for one failed validator
+  (CP1). Decide three (accepting that) or five.
+- **History retention.** Full history costs about 81 GB per node per year (section 10). Decide full history everywhere,
+  or pruned validators with a full-history node for verification (requires a change in how IDAX Ledger reads the chain).
 - Genesis, validator independence and retention are now deployment-time checkpoints (section 2, CP1–CP5), not open
   architecture decisions — but their actual answers (host count, measured growth, measured fee/reserve) are still
   environment inputs this document cannot supply in advance.

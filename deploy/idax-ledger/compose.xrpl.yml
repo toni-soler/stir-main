@@ -9,13 +9,20 @@
 #   - RPC/WebSocket admin ports bind to 127.0.0.1 only (the design binds them on every interface);
 #   - the configuration is mounted at /etc/xrpld, because the source-built image's entrypoint runs
 #     `xrpld --conf /etc/xrpld/xrpld.cfg` and copies nothing;
-#   - a non-validating API node is added on port 5010 (RPC) and 6010 (WebSocket) for application traffic.
+#   - a non-validating API node is added on port 5010 (RPC) and 6010 (WebSocket) for application traffic;
+#   - the entrypoint is wrapped by xrpld-entrypoint.sh so that each node keeps at most XRPLD_LOG_KEEP_DAYS days of logs.
 #
 # Usage (see deploy/idax-ledger/README.md):
 #   IDAX_LEDGER_RUNTIME_PATH=~/idax-ledger-dev/runtime XRPLD_IMAGE=idax/xrpld:3.3.0-source \
 #     docker compose -p idax-ledger-dev -f deploy/idax-ledger/compose.xrpl.yml up -d
 x-validator: &validator
   image: ${XRPLD_IMAGE:?set XRPLD_IMAGE to the verified source-built xrpld image}
+  # Same command as the image's own entrypoint, plus a bounded debug log (see xrpld-entrypoint.sh).
+  entrypoint: [/bin/sh, /xrpld-entrypoint.sh]
+  environment:
+    XRPLD_LOG_KEEP_DAYS: ${XRPLD_LOG_KEEP_DAYS:-7}
+    XRPLD_LOG_MAX_MB: ${XRPLD_LOG_MAX_MB:-512}
+    XRPLD_LOG_CHECK_SECONDS: ${XRPLD_LOG_CHECK_SECONDS:-300}
   restart: unless-stopped
   stop_grace_period: 60s
   healthcheck:
@@ -36,6 +43,7 @@ services:
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-01/config:/etc/xrpld:ro
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-01/data:/var/lib/xrpld
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-01/log:/var/log/xrpld
+      - ./xrpld-entrypoint.sh:/xrpld-entrypoint.sh:ro
     ports: ["127.0.0.1:5006:5005", "127.0.0.1:6006:6006"]
   validator-02:
     <<: *validator
@@ -47,6 +55,7 @@ services:
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-02/config:/etc/xrpld:ro
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-02/data:/var/lib/xrpld
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-02/log:/var/log/xrpld
+      - ./xrpld-entrypoint.sh:/xrpld-entrypoint.sh:ro
     ports: ["127.0.0.1:5007:5005", "127.0.0.1:6007:6006"]
   validator-03:
     <<: *validator
@@ -58,6 +67,7 @@ services:
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-03/config:/etc/xrpld:ro
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-03/data:/var/lib/xrpld
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-03/log:/var/log/xrpld
+      - ./xrpld-entrypoint.sh:/xrpld-entrypoint.sh:ro
     ports: ["127.0.0.1:5008:5005", "127.0.0.1:6008:6006"]
   api-01:
     <<: *validator
@@ -75,6 +85,7 @@ services:
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/api-01/config:/etc/xrpld:ro
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/api-01/data:/var/lib/xrpld
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/api-01/log:/var/log/xrpld
+      - ./xrpld-entrypoint.sh:/xrpld-entrypoint.sh:ro
     ports: ["127.0.0.1:5010:5005", "127.0.0.1:6010:6006"]
 
 networks:
