@@ -79,7 +79,9 @@ services:
       IDAX_LEDGER_PRIVATE_NETWORK_ID: "2181844733"
       IDAX_LEDGER_ANCHOR_ACCOUNT: ${IDAX_LEDGER_ANCHOR_ACCOUNT:?set to the anchoring account address}
       IDAX_LEDGER_ANCHOR_SEED_FILE: /run/secrets/anchor.seed
-      IDAX_LEDGER_XRPL_NODE_01_URL: http://validator-01:5005
+      # The first node is the one the service submits to and verifies against. It must hold full history (old proofs are
+      # verified by fetching the old transaction and ledger), so it is the API node, not a pruned validator.
+      IDAX_LEDGER_XRPL_NODE_01_URL: http://api-01:5005
       IDAX_LEDGER_XRPL_NODE_02_URL: http://validator-02:5005
       IDAX_LEDGER_XRPL_NODE_03_URL: http://validator-03:5005
       IDAX_LEDGER_TESTNET_ENABLED: "false"
@@ -89,7 +91,7 @@ services:
     restart: unless-stopped
     depends_on:
       ledger-provision: {condition: service_completed_successfully}
-      validator-01: {condition: service_healthy}
+      api-01: {condition: service_healthy}
       validator-02: {condition: service_healthy}
       validator-03: {condition: service_healthy}
     healthcheck:

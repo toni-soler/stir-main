@@ -1,5 +1,5 @@
 # IDAX Ledger private XRPL network: a SEPARATE Compose project from STIR (idax-ledger-<env>).
-# It owns three validators and one non-validating API node. Its named runtime (identities, NuDB, SQLite, logs) lives
+# It owns five validators (quorum four) and one non-validating, full-history API node. Its named runtime (identities, NuDB, SQLite, logs) lives
 # under IDAX_LEDGER_RUNTIME_PATH, outside this repository and outside the STIR project. `docker compose down` of STIR never
 # touches this project; `down -v` here would destroy the ledger history and must be an explicit, reviewed decision.
 #
@@ -23,7 +23,9 @@ x-validator: &validator
     XRPLD_LOG_KEEP_DAYS: ${XRPLD_LOG_KEEP_DAYS:-7}
     XRPLD_LOG_MAX_MB: ${XRPLD_LOG_MAX_MB:-512}
     XRPLD_LOG_CHECK_SECONDS: ${XRPLD_LOG_CHECK_SECONDS:-300}
-  restart: unless-stopped
+  # on-failure with a cap, not unless-stopped: a node that cannot start (disk full, damaged store) restarted 8,500
+  # times on DEV. After a host reboot or a full stop the network is started with start_xrpl.sh, never by Docker.
+  restart: on-failure:5
   stop_grace_period: 60s
   healthcheck:
     test: ["CMD-SHELL", "xrpld --conf /etc/xrpld/xrpld.cfg server_info 2>/dev/null | grep -q '\"server_state\" : \"proposing\"'"]
@@ -69,6 +71,30 @@ services:
       - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-03/log:/var/log/xrpld
       - ./xrpld-entrypoint.sh:/xrpld-entrypoint.sh:ro
     ports: ["127.0.0.1:5008:5005", "127.0.0.1:6008:6006"]
+  validator-04:
+    <<: *validator
+    container_name: idax-ledger-dev-validator-04
+    networks:
+      xrpl-private:
+        ipv4_address: 172.27.0.15
+    volumes:
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-04/config:/etc/xrpld:ro
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-04/data:/var/lib/xrpld
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-04/log:/var/log/xrpld
+      - ./xrpld-entrypoint.sh:/xrpld-entrypoint.sh:ro
+    ports: ["127.0.0.1:5011:5005", "127.0.0.1:6011:6006"]
+  validator-05:
+    <<: *validator
+    container_name: idax-ledger-dev-validator-05
+    networks:
+      xrpl-private:
+        ipv4_address: 172.27.0.16
+    volumes:
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-05/config:/etc/xrpld:ro
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-05/data:/var/lib/xrpld
+      - ${IDAX_LEDGER_RUNTIME_PATH:?}/validator-05/log:/var/log/xrpld
+      - ./xrpld-entrypoint.sh:/xrpld-entrypoint.sh:ro
+    ports: ["127.0.0.1:5012:5005", "127.0.0.1:6012:6006"]
   api-01:
     <<: *validator
     healthcheck:

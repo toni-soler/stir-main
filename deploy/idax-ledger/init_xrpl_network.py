@@ -8,6 +8,10 @@ Creates, per node, a persistent runtime directory outside the repository:
   validator-NN/data, validator-NN/log        NuDB/SQLite and logs (created empty)
   api-01 has the same config without [validator_token]: it follows the validators and does not vote.
 
+History: validators keep only the last --validator-history-ledgers ledgers (online_delete); api-01 keeps full history
+and is the node IDAX Ledger reads, because verifying an old proof needs the old transaction and ledger. An idle network
+still closes about 17 ledgers a minute at about 9 KB each, so an unpruned node grows about 81 GB a year.
+
 Idempotent for existing identities: keys and tokens that already exist are kept, never regenerated. Prints only public
 identities and the network id. Usage:
   IDAX_LEDGER_RUNTIME_PATH=~/idax-ledger-dev/runtime XRPLD_IMAGE=idax/xrpld:3.3.0-source \
@@ -21,11 +25,14 @@ import re
 import subprocess
 import sys
 
-VALIDATORS = ["validator-01", "validator-02", "validator-03"]
+# Five validators: xrpld needs 80% of the trusted validators, so three give a quorum of three (no validator may fail)
+# and five give a quorum of four (one may fail or be rebuilt while the network keeps validating).
+VALIDATORS = ["validator-01", "validator-02", "validator-03", "validator-04", "validator-05"]
 API_NODE = "api-01"
 # Fixed addresses on the XRPL subnet (deploy/idax-ledger/compose.xrpl.yml). Peers are configured by address so that startup
 # order and DNS resolution timing cannot leave a node without its fixed peers.
-NODE_IPS = {"validator-01": "172.27.0.11", "validator-02": "172.27.0.12", "validator-03": "172.27.0.13", "api-01": "172.27.0.14"}
+NODE_IPS = {"validator-01": "172.27.0.11", "validator-02": "172.27.0.12", "validator-03": "172.27.0.13",
+            "api-01": "172.27.0.14", "validator-04": "172.27.0.15", "validator-05": "172.27.0.16"}
 
 
 def run(args, **kwargs):
@@ -54,6 +61,8 @@ def token_block(output):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--network-id", type=int, default=2181844733)
+    parser.add_argument("--validator-history-ledgers", type=int, default=50000,
+                        help="ledgers each validator keeps (about two days at 17 a minute); 0 keeps full history")
     parser.add_argument("--image", default=os.environ.get("XRPLD_IMAGE"))
     parser.add_argument("--runtime", default=os.environ.get("IDAX_LEDGER_RUNTIME_PATH"))
     parser.add_argument("--template", default=str(pathlib.Path(__file__).resolve().parents[2] /
@@ -86,10 +95,19 @@ def main():
         else:
             token = None
         config = template.replace("__NETWORK_ID__", str(args.network_id))
-        if node in VALIDATORS:
-            # peer_private=1: validators accept inbound peers only from their own fixed list, so the API node
-            # must be listed here or it can never connect to the validators.
-            config = config.replace("validator-03 51235\n", f"validator-03 51235\n{API_NODE} 51235\n", 1)
+        # peer_private=1: a node accepts inbound peers only from its own fixed list, so every node lists every other.
+        extra = "".join(f"{name} 51235\n" for name in VALIDATORS[3:] + [API_NODE])
+        if "validator-03 51235\n" not in config:
+            raise SystemExit("template [ips_fixed] changed; update init_xrpl_network.py")
+        config = config.replace("validator-03 51235\n", "validator-03 51235\n" + extra, 1)
+        keep = args.validator_history_ledgers
+        if node in VALIDATORS and keep:
+            if keep < 256:
+                raise SystemExit("--validator-history-ledgers must be 0 or at least 256")
+            if "fast_load=1\n" not in config or "[ledger_history]\nfull" not in config:
+                raise SystemExit("template [node_db]/[ledger_history] changed; update init_xrpl_network.py")
+            config = config.replace("fast_load=1\n", f"fast_load=1\nonline_delete={keep}\nadvisory_delete=0\n", 1)
+            config = config.replace("[ledger_history]\nfull", f"[ledger_history]\n{keep}", 1)
         if token is None:
             config = re.sub(r"\[validator_token\]\s*__VALIDATOR_TOKEN__\s*", "", config)
         else:

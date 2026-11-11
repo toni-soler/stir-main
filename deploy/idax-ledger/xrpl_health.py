@@ -5,7 +5,7 @@ ledger, complete ledger ranges). Never prints secrets.
 
   python3 deploy/idax-ledger/xrpl_health.py [--json] [--window SECONDS]
 
-Exit status 0 only when the three validators are `proposing` with at least two peers, the API node is `full`, the
+Exit status 0 only when every validator is `proposing` with at least two peers, the API node is `full`, the
 validated ledger ADVANCES on every node during the sampling window (default 15 s), and every node reports the same hash
 for the same validated ledger. State alone is not health: after the 2026-10-28 disk exhaustion all four nodes reported
 proposing/full with three peers while each sat on a different validated ledger and none advanced.
@@ -19,6 +19,8 @@ NODES = [
     ("validator-01", "http://127.0.0.1:5006", "proposing"),
     ("validator-02", "http://127.0.0.1:5007", "proposing"),
     ("validator-03", "http://127.0.0.1:5008", "proposing"),
+    ("validator-04", "http://127.0.0.1:5011", "proposing"),
+    ("validator-05", "http://127.0.0.1:5012", "proposing"),
     ("api-01", "http://127.0.0.1:5010", "full"),
 ]
 
@@ -35,7 +37,10 @@ def server_info(url):
 
 
 def validated_seq(url):
-    return (server_info(url).get("validated_ledger") or {}).get("seq")
+    try:
+        return (server_info(url).get("validated_ledger") or {}).get("seq")
+    except OSError:
+        return None
 
 
 def main():
@@ -44,7 +49,10 @@ def main():
     before = {name: validated_seq(url) for name, url, _ in NODES}
     time.sleep(window)
     for name, url, expected_state in NODES:
-        info = server_info(url)
+        try:
+            info = server_info(url)
+        except OSError:
+            info = {"server_state": "unreachable"}
         validated = info.get("validated_ledger") or {}
         row = {
             "node": name,
@@ -68,7 +76,10 @@ def main():
     common = min((row["validatedLedgerSeq"] or 0) for row in report)
     hashes = set()
     for _, url, _ in NODES:
-        ledger = rpc(url, "ledger", {"ledger_index": common}) if common else {}
+        try:
+            ledger = rpc(url, "ledger", {"ledger_index": common}) if common else {}
+        except OSError:
+            ledger = {}
         hashes.add(ledger.get("ledger_hash") if ledger.get("validated") else None)
     agreed = len(hashes) == 1 and None not in hashes
     healthy = healthy and agreed
@@ -77,7 +88,7 @@ def main():
                           "windowSeconds": window, "nodes": report}, indent=2))
     else:
         for row in report:
-            print(f"{row['node']:13} net={row['networkId']} state={row['serverState']:9} peers={row['peers']} "
+            print(f"{row['node']:13} net={row['networkId']} state={row['serverState']:11} peers={row['peers']} "
                   f"validated={row['validatedLedgerSeq']} (+{row['validatedLedgerAdvanced']} in {window}s) "
                   f"complete={row['completeLedgers']} build={row['buildVersion']}")
         print(f"same validated chain at ledger {common}: {'yes' if agreed else 'NO'}")
