@@ -53,6 +53,22 @@ python3 deploy/idax-ledger/xrpl_health.py    # HEALTHY when validators propose w
 The DEV funding root is the standard standalone genesis account of a private XRPL network (its seed is public by design).
 That is acceptable only on DEV. Production requires its own genesis decision before any funding.
 
+## Disk exhaustion incident (DEV, 2026-10-28, found 2026-11-11)
+
+- Cause: `ledger_history=full` (about 0.22 GB per node per day) plus one unrotated `debug.log` per node (about
+  0.12 GB per validator per day) plus 19 GB of Docker build cache filled the 95 GB disk in 23 days.
+- Effect: xrpld stops itself below 512 MB free. With `restart: unless-stopped` each node then restarted about 8,500
+  times. The STIR stack on the same host went unhealthy and recovered by itself once space was freed; both databases
+  were intact (6 outbox rows `ANCHORED`, 6 submissions `VALIDATED`).
+- The nodes persisted different last validated ledgers (584961, 584964, 584966, 584970). Started together, they did
+  not resume validation; `xrpl_health.py` still printed HEALTHY because it only read state and peers.
+- Fixes in this directory: `xrpld-entrypoint.sh` (seven days of logs at most), `xrpl_health.py` (requires the validated
+  ledger to advance and all nodes to agree).
+- Not fixed: the restart behaviour itself. It stalled again after an ordinary recreate of the four containers. Recovery
+  is an ordered start, most advanced node first (release/PRODUCTION_DEPLOYMENT_OPERATOR_RUNBOOK.md, section 7). The
+  "cold start converges automatically" statement below holds only for the young network it was tested on.
+- Capacity figures: runbook section 10.
+
 ## Observed operational behaviour (DEV, 2026-10-05)
 
 - Starting the nodes simultaneously after a full stop keeps the validated ledgers but does not re-establish peering. Restarting

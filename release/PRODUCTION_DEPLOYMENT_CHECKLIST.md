@@ -5,7 +5,7 @@ result observed. Record the evidence (timestamp, SHA-256, identifier) next to th
 
 Status: **NOT STARTED.** Claude has not run any step in this checklist on production.
 
-Companion runbook is **READY FOR OPERATOR EXECUTION** (see its status line for what that does and does not mean).
+Companion runbook is **NOT READY** (two blocking open issues in its section 16: restart behaviour, validator count).
 
 | Field | Value |
 |---|---|
@@ -41,6 +41,8 @@ Companion runbook is **READY FOR OPERATOR EXECUTION** (see its status line for w
 - [ ] XRPL started once with the Compose command in runbook section 7 (no per-node restarts).
 - [ ] `xrpl_health.py` reports HEALTHY: validators `proposing`, at least 2 peers each, API node `full`.
 - [ ] Validated ledger hashes identical across all nodes.
+- [ ] `xrpl_health.py` exit 0: validated ledger advancing on every node, same chain (state alone is not enough).
+- [ ] Log rotation active on every node (`xrpld-entrypoint.sh`); rotated files appear and are removed after 7 days.
 
 ## 6. Anchoring account
 - [ ] Anchor address `<ANCHOR_ACCOUNT>` recorded; seed generated offline; seed never on a networked host.
@@ -86,6 +88,7 @@ Companion runbook is **READY FOR OPERATOR EXECUTION** (see its status line for w
 - [ ] Audit verifier `/security-status`: `securityState` CLEAR, `openIncidentCount` 0.
 
 ## 13. Monitoring and retention
+- [ ] Disk sized from runbook section 10: 0.22 GB per node per day of history + 0.5 GB logs per node, 2x headroom.
 - [ ] Alerts configured: disk free below 20%; validator growth above 24-hour projection; `FAILED_RETRYABLE` growing for more than 15 minutes.
 - [ ] CP4: 24-hour growth measured on production; `retention_days_possible` computed; >= 30 or explicit operator sign-off recorded.
 
