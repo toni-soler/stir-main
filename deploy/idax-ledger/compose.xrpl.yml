@@ -22,6 +22,7 @@ x-validator: &validator
   environment:
     XRPLD_LOG_KEEP_DAYS: ${XRPLD_LOG_KEEP_DAYS:-7}
     XRPLD_LOG_MAX_MB: ${XRPLD_LOG_MAX_MB:-512}
+    XRPLD_LOG_CHECK_SECONDS: ${XRPLD_LOG_CHECK_SECONDS:-300}
   restart: unless-stopped
   stop_grace_period: 60s
   healthcheck:
