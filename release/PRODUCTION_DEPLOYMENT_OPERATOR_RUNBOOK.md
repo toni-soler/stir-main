@@ -1,10 +1,11 @@
 # STIR production deployment — operator runbook (IDAX Ledger / private XRPL)
 
 Status: **NOT READY - see section 16.** Decided and verified on DEV on 2026-11-12: five validators (quorum four), pruned
-validators with one full-history node that IDAX Ledger reads, seven-day logs, and a start command that resumes
-validation after uneven stops. Still open before production: a second copy of the full history, the start procedure
-when validators run on separate hosts, and the fact that this runbook has never been rehearsed end to end. Nothing in
-this document has been run against production - the author did not and must not run these commands; every production
+validators with one full-history node that IDAX Ledger reads, seven-day logs, a start command that resumes validation
+after uneven stops, and a patched xrpld that closes an EMPTY ledger only every 200 seconds (CP6). Still open before
+production: the release build of that patched xrpld, a second copy of the full history, the start procedure when
+validators run on separate hosts, and the fact that this runbook has never been rehearsed end to end. Nothing in this
+document has been run against production - the author did not and must not run these commands; every production
 command below is for the operator to run on the host named in its `RUN ON:` label.
 
 Companion: `release/PRODUCTION_DEPLOYMENT_CHECKLIST.md` (tick-box version of section 14).
@@ -55,9 +56,12 @@ Verified on DEV: one of five stopped, the validated ledger kept advancing; two s
 with a plain `docker start`, it resumed with no other action.
 
 Negative UNL: a validator that stays down for long is disabled by the network itself and its validations stop
-counting until the network re-enables it at a later flag ledger (every 256 ledgers, about 15 minutes each). During that
-window the tolerance is already spent: stopping a second validator halts validation. Check
-`validators` -> `NegativeUNL` is empty before any planned validator stop.
+counting until the network re-enables it at a later flag ledger (every 256 ledgers). With the 200-second idle interval
+(CP6) 256 ledgers of an idle network take about 14 hours, not 15 minutes: the network is slow both to disable a dead
+validator and to re-enable a recovered one. During that window the tolerance is already spent: stopping a second
+validator halts validation. Check `validators` -> `NegativeUNL` is empty before any planned validator stop.
+Verified on DEV with the 200-second interval: one of five stopped for 7.5 minutes, validation continued; a second
+stopped, it halted; both started, it resumed and every node agreed on the chain.
 
 **CP2 — Genesis / network identity.** Always create a **new** private network; never reuse a DEV network id. Resolved
 by the mandatory check in section 4 — there is nothing left to decide, only to run and read the result.
@@ -75,8 +79,31 @@ CHECK (before activation, with the per-node figures of section 10; re-check afte
       STOP. Either add disk before activation, or get explicit operator sign-off to accept a shorter
       guaranteed-retention window than 30 days. Do not silently prune history to make the number look fine.
   ELSE:
-      keep ledger_history=full (the DEV default). No pruning configuration is defined by this runbook.
+      proceed. Validators are pruned (`online_delete`) and the history node keeps full history (section 10).
 ```
+
+**CP6 - xrpld build and idle interval.** Upstream xrpld closes an empty ledger about every 3.3 seconds, even with no
+transactions, because its "others have closed" rule counts validations of the previous ledger; its own 15-second idle
+interval is never reached. Every empty ledger still writes about 9 KB per node, so an idle network grows about 81 GB a
+year on the history node. STIR runs a patched xrpld:
+```
+source:  https://github.com/toni-soler/rippled  branch idax/idle-interval-3.3.0  commit 906d6e8 (on tag 3.3.0)
+switch:  XRPLD_IDLE_INTERVAL_SECONDS=200 in the environment of EVERY node (compose.xrpl.yml passes it through)
+effect:  a ledger with no transactions closes after 200 s; a ledger with transactions closes as upstream (seconds);
+         the "is this node current" age checks and validation currency windows are widened by the same 200 s
+unset:   the binary behaves exactly as upstream
+invalid: any value other than 0 or 15..300 stops the process at start
+```
+CHECK before section 7: every node runs the same image digest and the same `XRPLD_IDLE_INTERVAL_SECONDS`. Never mix
+patched and unpatched nodes, or different values, in one network. Verified on DEV on 2026-11-12: empty ledgers every
+200 s exactly; a real anchor submitted when the last ledger was 150 s old was ANCHORED in under 15 s, first attempt;
+uneven-stop restart PASS; tolerance as in CP1; a validator with an empty store synced and proposed in about 7 minutes;
+online deletion rotated with the patch active (`age 0s`). The DEV image (`idax/xrpld:3.3.0-idle-906d6e8153`) was built
+without upstream tests and outside the provenance pipeline - section 16.
+
+Visible side effects: `server_info` reports a validated ledger age of 0 for the first 200 s; health and restart checks
+must wait one interval (the scripts read the same variable); after a full restart the network took about 11 minutes to
+report healthy, instead of about 2.
 
 **CP5 — Anchoring account funding.** Measured live on the DEV network (`server_state`): `reserve_base` = 10 XRP,
 `reserve_inc` = 2 XRP, `base_fee` = 10 drops (0.00001 XRP) — this private network kept XRPL's standard mainnet-like
@@ -191,9 +218,13 @@ install -m 600 -o <LEDGER_UID> -g <LEDGER_GID> <OFFLINE_MEDIA>/anchor.seed <RUNT
 2. Start once:
 
 ```sh
-IDAX_LEDGER_RUNTIME_PATH=<RUNTIME> XRPLD_IMAGE=<XRPLD_IMAGE> \
+IDAX_LEDGER_RUNTIME_PATH=<RUNTIME> XRPLD_IMAGE=<XRPLD_IMAGE> XRPLD_IDLE_INTERVAL_SECONDS=200 \
   IDAX_LEDGER_PROJECT=<XRPL_PROJECT> python3 <REPO>/deploy/idax-ledger/xrpl_start.py
 ```
+
+Keep `XRPLD_IDLE_INTERVAL_SECONDS=200` exported for every later command in this section: the health check waits up to
+one interval plus 30 s for a new validated ledger, and without the variable it waits 15 s and reports NOT HEALTHY on
+a healthy idle network.
 
 3. Wait for convergence with the read-only report (no restart):
 
@@ -211,12 +242,14 @@ validated ledgers and are started together build from the lowest one; the nodes 
 "Not validating incompatible with valid ledger" and validation does not resume (DEV, 2026-11-11, twice).
 `xrpl_start.py` (called by `start_xrpl.sh`) reads each stopped node's last persisted ledger and starts the most
 advanced node first. Verified on DEV on 2026-11-12 with one validator killed and the rest stopped later: validation
-resumed in about 140 seconds, twice, with identical history on all six nodes.
+resumed in about 140 seconds, twice, with identical history on all six nodes; and again with the 200-second idle
+interval, healthy after 661 seconds, identical history.
 
 - After a host reboot run `start_xrpl.sh`. The containers use `restart: on-failure:5`; whether Docker starts them at
   boot was not tested, and `start_xrpl.sh` is safe either way (it does nothing when the network is healthy and
   performs the ordered start when it is not).
-- A single node that stopped while the others kept running needs only `docker start`.
+- A single node that stopped while the others kept running needs only `docker start`. It may miss the last few
+  ledgers for one interval and backfill them on its own (seen on DEV after the two-validator stop).
 - A node whose store is damaged (seen once after a hard kill of a full-history node: "Missing node", exit 139 in a
   loop) is repaired by moving its `data/db` directory aside and starting it; it syncs from its peers. For a pruned
   validator that costs minutes. For the history node it costs the only full copy - see section 16.
@@ -386,29 +419,32 @@ ENABLE procedure. `RUN ON: PROD-STIR`.
 
 ## 10. Retention and capacity (measured on DEV; re-measure on production)
 
-The network closes about 17 ledgers a minute whether or not anything is anchored, and every ledger, even an empty one,
-rewrites the recent-ledger-hashes object: about 9 KB per ledger per node. Growth follows time, not STIR traffic, and
-cannot be configured away. It is bounded by pruning.
+Every ledger, even an empty one, rewrites the recent-ledger-hashes object: about 9 KB per ledger per node. Growth
+therefore follows the number of ledgers, not STIR traffic. With the 200-second idle interval (CP6) an idle network
+closes 432 ledgers a day instead of about 26,000; each anchor adds one ledger of a few KB more.
 
-| Node | History kept | Measured on DEV | Growth |
+| Node | History kept | Size | Growth with 200 s idle interval |
 |---|---|---|---|
-| Validator (x5) | last 50,000 ledgers (`online_delete`, about two days) | 0.45 GB at 50,000 ledgers | none after the store rotates; budget 1 GB (the store holds up to twice the window) |
-| History node (x1) | full (`ledger_history=full`) | 5.2 GB in 23.5 days | about 0.22 GB a day, about 81 GB a year |
-| Logs, per validator | seven days, compressed | 0.12 GB a day uncompressed, ratio about 3.7:1 | budget 0.5 GB |
-| Logs, history node | seven days, compressed | 0.012 GB a day uncompressed | budget 0.1 GB |
+| Validator (x5) | last 50,000 ledgers (`online_delete`; about 115 days when idle) | 0.45-0.6 GB measured on DEV | none after the store rotates; budget 1 GB (the store holds up to twice the window) |
+| History node (x1) | full (`ledger_history=full`) | 5.4 GB on DEV (history built at the old cadence) | about 4 MB a day, about 1.4 GB a year when idle (calculated; 24-hour measurement in section 16) |
+| Logs, per validator | seven days, compressed | about 0.105 GB a day uncompressed, measured with the 200 s interval; ratio about 3.7:1 | budget 0.5 GB |
+| Logs, history node | seven days, compressed | about 0.012 GB a day uncompressed | budget 0.1 GB |
 
-- Disk per validator host: 2 GB for the node, plus headroom. Disk for the history node: `0.22 GB x days + 0.1 GB`,
-  2x headroom: about 165 GB for one year.
-- Profile A (all six nodes on one disk): about 0.22 GB a day in total, about 175 GB for one year with headroom.
-  Before pruning the same network grew about 0.9 GB a day and filled a 95 GB disk in 23 days.
+- Validator logs do not shrink with the idle interval: a validator writes a consensus heartbeat line every second
+  regardless of the configured log level (`RclConsensusLogger` uses `writeAlways`). Seven-day rotation bounds them.
+- Disk per validator host: 2 GB for the node and logs, plus headroom. History node: `1.4 GB a year + anchors`, budget
+  20 GB for the first year.
+- Profile A (all six nodes on one disk): budget 40 GB for the first year. For comparison, the same network without the
+  idle interval and without pruning grew about 0.9 GB a day and filled a 95 GB disk in 23 days.
 - IDAX Ledger must read the history node: verifying an old proof fetches the old transaction and ledger. Checked on
   DEV: the October anchor transaction is found on the history node and returns `txnNotFound` on a pruned validator.
   `compose.ledger.yml` sets the first (primary) node to `api-01`.
 
 xrpld stops itself when less than 512 MB is free ("Out of transaction DB space"); nodes then stop at different validated
 ledgers. Alert thresholds to configure before activation: disk free below 20% (page), below 10% (act); validated ledger
-not advancing for 60 seconds (`xrpl_health.py` exit status); ledger outbox `FAILED_RETRYABLE` growing for more than
-15 minutes; `NegativeUNL` not empty.
+not advancing for 230 seconds (one idle interval plus 30 s; `xrpl_health.py` exit status with
+`XRPLD_IDLE_INTERVAL_SECONDS` set); ledger outbox `FAILED_RETRYABLE` growing for more than 15 minutes; `NegativeUNL`
+not empty.
 
 ---
 
@@ -490,6 +526,13 @@ its own tenant has gone through the real ENABLE procedure for a real reason, not
   damaged, the history older than the validators' window is gone. Decided 2026-11-12: a second full-history node
   (not scheduled backups). Not implemented yet: compose service, configuration, IDAX Ledger second node URL and a
   failover test are still to be written and verified on DEV before production.
+- **Release build of the patched xrpld (blocking).** The DEV image was built without upstream tests and outside the
+  provenance pipeline (`xrpl-build`). Production needs the pipeline build of commit `906d6e8` from
+  `toni-soler/rippled`, with upstream unit tests passing, and a new XRPL image archive with SHA-256.
+- **Growth with the idle interval measured over 24 hours (blocking).** Section 10's history-node figure is calculated.
+  Baseline recorded on DEV at 2026-11-12T16:29Z.
+- **Second scheduled rotation under the patch.** The first rotation with the patch active passed on DEV
+  (validator-04, `online_delete=256` for the test). The next one is due about 14 hours later.
 - **Ordered start across hosts (blocking for Profile B).** Section 7.
 - **Never rehearsed.** No one has executed this runbook from the first step to the last on a clean host.
 - **Host reboot.** A boot-time unit that runs `start_xrpl.sh` is not written or tested.

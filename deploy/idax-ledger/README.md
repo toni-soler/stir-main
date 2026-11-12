@@ -69,6 +69,21 @@ That is acceptable only on DEV. Production requires its own genesis decision bef
   "cold start converges automatically" statement below holds only for the young network it was tested on.
 - Capacity figures: runbook section 10.
 
+## Idle interval since 2026-11-12 (patched xrpld)
+
+- DEV runs `idax/xrpld:3.3.0-idle-906d6e8153`, built from `toni-soler/rippled` branch `idax/idle-interval-3.3.0`
+  (commit `906d6e8` on tag 3.3.0), with `XRPLD_IDLE_INTERVAL_SECONDS=200` on every node. That build is experimental:
+  no upstream tests, not the `xrpl-build` provenance pipeline.
+- Why: upstream closes an empty ledger every 3-4 s (the "others have closed" rule counts validations of the previous
+  ledger, so the idle interval is never reached), about 9 KB per ledger per node. 200 s gives 432 ledgers a day.
+- The variable must be exported for `start_xrpl.sh`, `xrpl_start.py`, `xrpl_health.py` and `cold_restart_test.sh`:
+  the health check then waits up to 230 s for a new validated ledger.
+- Verified on DEV: cadence 200 s; anchors not delayed by the interval; uneven-stop restart PASS (661 s to healthy);
+  one of five down keeps validating, two halt, restart resumes; an empty-store validator synced in about 7 minutes;
+  online deletion rotated with the patch active (validator-04 temporarily set to `online_delete=256`).
+- Validator debug logs stay about 0.1 GB a day: the consensus heartbeat is written every second regardless of level.
+- Evidence: `~/idax-ledger-dev/evidence/idle-200-2026-11-12/` on the DEV host.
+
 ## Topology since 2026-11-12 (supersedes the three-validator description in this file)
 
 - Five validators (`validator-01` .. `validator-05`, quorum four) and `api-01`, non-validating, full history.
@@ -79,6 +94,8 @@ That is acceptable only on DEV. Production requires its own genesis decision bef
 - One validator stopped: validation continued. Two stopped: halted. Both started again: resumed.
 - A validator that was down for hours stays on the Negative UNL until the network re-enables it; until then a second
   validator stop halts validation. That, not load, made the first tolerance test fail.
+- The validator-05 store from before the empty-store sync test is kept as `validator-05/data/db.sync-test-2026-11-12`
+  (about 0.6 GB) until it is explicitly deleted.
 - The old stores set aside during the DEV migration were deleted on 2026-11-12 after checking that `api-01` holds
   ledgers 88 onwards and that the first transaction on the network is in ledger 135.
 - Decided 2026-11-12: add a second full-history node. Not implemented yet.

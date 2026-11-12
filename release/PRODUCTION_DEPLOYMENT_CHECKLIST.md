@@ -5,7 +5,7 @@ result observed. Record the evidence (timestamp, SHA-256, identifier) next to th
 
 Status: **NOT STARTED.** Claude has not run any step in this checklist on production.
 
-Companion runbook is **NOT READY** (open issues in its section 16: single full-history copy, start across hosts, never rehearsed).
+Companion runbook is **NOT READY** (open issues in its section 16: release build of the patched xrpld, 24-hour growth measurement, single full-history copy, start across hosts, never rehearsed).
 
 | Field | Value |
 |---|---|
@@ -30,6 +30,11 @@ Companion runbook is **NOT READY** (open issues in its section 16: single full-h
 - [ ] Network id `<NETWORK_ID>` agreed and different from DEV `2181844733`.
 - [ ] No bridge or route between production XRPL and any DEV network.
 
+## 3a. xrpld build (runbook CP6)
+- [ ] XRPL image built by the provenance pipeline from `toni-soler/rippled` commit `906d6e8` (branch `idax/idle-interval-3.3.0`), upstream unit tests passed; image digest `<XRPLD_IMAGE_DIGEST>` recorded.
+- [ ] Every node runs that same digest; no unpatched node in the network.
+- [ ] `XRPLD_IDLE_INTERVAL_SECONDS=200` set for every node and exported for the start/health commands.
+
 ## 4. Validator identity (per validator host, on the target machine)
 - [ ] Validator 01 host created its keys locally; only the public key `<VALIDATOR_01_PUBLIC_KEY>` was shared.
 - [ ] Validator 02 host created its keys locally; only the public key `<VALIDATOR_02_PUBLIC_KEY>` was shared.
@@ -42,6 +47,7 @@ Companion runbook is **NOT READY** (open issues in its section 16: single full-h
 ## 5. Consensus start
 - [ ] XRPL started with `start_xrpl.sh` (runbook section 7), not with a bare `docker compose up`.
 - [ ] `validation_quorum` is 4 and `NegativeUNL` is empty.
+- [ ] With no transactions, consecutive validated ledgers close 200 s apart (`ledger` close times).
 - [ ] Validators run with `online_delete`; the history node runs with `ledger_history=full`; IDAX Ledger's first node is the history node.
 - [ ] `xrpl_health.py` reports HEALTHY: validators `proposing`, at least 2 peers each, API node `full`.
 - [ ] Validated ledger hashes identical across all nodes.
@@ -92,8 +98,8 @@ Companion runbook is **NOT READY** (open issues in its section 16: single full-h
 - [ ] Audit verifier `/security-status`: `securityState` CLEAR, `openIncidentCount` 0.
 
 ## 13. Monitoring and retention
-- [ ] Disk sized from runbook section 10: 2 GB per validator; history node 0.22 GB per day; 2x headroom.
-- [ ] Alerts configured: disk free below 20%; validator growth above 24-hour projection; `FAILED_RETRYABLE` growing for more than 15 minutes.
+- [ ] Disk sized from runbook section 10: 2 GB per validator host; history node 20 GB for the first year; Profile A 40 GB.
+- [ ] Alerts configured: disk free below 20%; validated ledger not advancing for 230 s; validator growth above 24-hour projection; `FAILED_RETRYABLE` growing for more than 15 minutes.
 - [ ] CP4: 24-hour growth measured on production; `retention_days_possible` computed; >= 30 or explicit operator sign-off recorded.
 
 ## 14. Sign-off
