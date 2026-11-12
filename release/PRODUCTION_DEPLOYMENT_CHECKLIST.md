@@ -5,7 +5,7 @@ result observed. Record the evidence (timestamp, SHA-256, identifier) next to th
 
 Status: **NOT STARTED.** Claude has not run any step in this checklist on production.
 
-Companion runbook is **NOT READY** (two blocking open issues in its section 16: restart behaviour, validator count).
+Companion runbook is **NOT READY** (open issues in its section 16: single full-history copy, start across hosts, never rehearsed).
 
 | Field | Value |
 |---|---|
@@ -34,11 +34,15 @@ Companion runbook is **NOT READY** (two blocking open issues in its section 16: 
 - [ ] Validator 01 host created its keys locally; only the public key `<VALIDATOR_01_PUBLIC_KEY>` was shared.
 - [ ] Validator 02 host created its keys locally; only the public key `<VALIDATOR_02_PUBLIC_KEY>` was shared.
 - [ ] Validator 03 host created its keys locally; only the public key `<VALIDATOR_03_PUBLIC_KEY>` was shared.
+- [ ] Validator 04 host created its keys locally; only the public key `<VALIDATOR_04_PUBLIC_KEY>` was shared.
+- [ ] Validator 05 host created its keys locally; only the public key `<VALIDATOR_05_PUBLIC_KEY>` was shared.
 - [ ] Each validator's secret stays on its own host (mode 600 / directory 700). None copied into Git, chat or this checklist.
-- [ ] The agreed `validators.txt` lists exactly the three public keys above, identical on every node.
+- [ ] The agreed `validators.txt` lists exactly the five public keys above, identical on every node.
 
 ## 5. Consensus start
-- [ ] XRPL started once with the Compose command in runbook section 7 (no per-node restarts).
+- [ ] XRPL started with `start_xrpl.sh` (runbook section 7), not with a bare `docker compose up`.
+- [ ] `validation_quorum` is 4 and `NegativeUNL` is empty.
+- [ ] Validators run with `online_delete`; the history node runs with `ledger_history=full`; IDAX Ledger's first node is the history node.
 - [ ] `xrpl_health.py` reports HEALTHY: validators `proposing`, at least 2 peers each, API node `full`.
 - [ ] Validated ledger hashes identical across all nodes.
 - [ ] `xrpl_health.py` exit 0: validated ledger advancing on every node, same chain (state alone is not enough).
@@ -88,7 +92,7 @@ Companion runbook is **NOT READY** (two blocking open issues in its section 16: 
 - [ ] Audit verifier `/security-status`: `securityState` CLEAR, `openIncidentCount` 0.
 
 ## 13. Monitoring and retention
-- [ ] Disk sized from runbook section 10: 0.22 GB per node per day of history + 0.5 GB logs per node, 2x headroom.
+- [ ] Disk sized from runbook section 10: 2 GB per validator; history node 0.22 GB per day; 2x headroom.
 - [ ] Alerts configured: disk free below 20%; validator growth above 24-hour projection; `FAILED_RETRYABLE` growing for more than 15 minutes.
 - [ ] CP4: 24-hour growth measured on production; `retention_days_possible` computed; >= 30 or explicit operator sign-off recorded.
 

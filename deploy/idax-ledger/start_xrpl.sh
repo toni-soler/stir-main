@@ -1,12 +1,12 @@
 #!/bin/sh
-# Starts the IDAX private XRPL network and the IDAX Ledger service once, then verifies convergence.
+# Starts the IDAX private XRPL network and then the IDAX Ledger service, and verifies that validation is progressing.
 #
-# No per-node restarts are performed. Peers are configured by fixed subnet address (compose.xrpl.yml), which made the cold
-# start converge automatically: see cold_restart_test.sh and the evidence in deploy/idax-ledger/README.md.
+# The nodes are started by xrpl_start.py, most advanced node first, because a simultaneous start of nodes that stopped
+# at different validated ledgers does not resume validation (README.md, "Disk exhaustion incident"). Run this after a
+# host reboot as well: Docker does not restart these containers by itself (compose.xrpl.yml, restart policy).
 set -eu
 DIR=$(cd "$(dirname "$0")" && pwd)
 PROJECT=${IDAX_LEDGER_PROJECT:-idax-ledger-dev}
+python3 "$DIR/xrpl_start.py"
 docker compose -p "$PROJECT" -f "$DIR/compose.xrpl.yml" -f "$DIR/compose.ledger.yml" up -d
-i=0
-until python3 "$DIR/xrpl_health.py" >/dev/null 2>&1 || [ "$i" -ge 36 ]; do i=$((i + 1)); sleep 5; done
 python3 "$DIR/xrpl_health.py"

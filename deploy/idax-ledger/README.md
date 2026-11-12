@@ -69,6 +69,21 @@ That is acceptable only on DEV. Production requires its own genesis decision bef
   "cold start converges automatically" statement below holds only for the young network it was tested on.
 - Capacity figures: runbook section 10.
 
+## Topology since 2026-11-12 (supersedes the three-validator description in this file)
+
+- Five validators (`validator-01` .. `validator-05`, quorum four) and `api-01`, non-validating, full history.
+- Validators keep the last 50,000 ledgers (`online_delete`); about 0.45 GB each. `api-01` grows about 0.22 GB a day.
+- IDAX Ledger's first node is `api-01` (`compose.ledger.yml`): old proofs can only be verified against full history.
+- Start with `start_xrpl.sh` / `xrpl_start.py`: most advanced node first. `cold_restart_test.sh` kills one validator,
+  stops the rest later and requires validation to resume; it passed twice on this topology (about 140 s each).
+- One validator stopped: validation continued. Two stopped: halted. Both started again: resumed.
+- A validator that was down for hours stays on the Negative UNL until the network re-enables it; until then a second
+  validator stop halts validation. That, not load, made the first tolerance test fail.
+- The old stores set aside during the DEV migration were deleted on 2026-11-12 after checking that `api-01` holds
+  ledgers 88 onwards and that the first transaction on the network is in ledger 135.
+- Decided 2026-11-12: add a second full-history node. Not implemented yet.
+- Evidence: `~/idax-ledger-dev/evidence/restart-2026-11-12/` and `topology-2026-11-12/` on the DEV host.
+
 ## Observed operational behaviour (DEV, 2026-10-05)
 
 - Starting the nodes simultaneously after a full stop keeps the validated ledgers but does not re-establish peering. Restarting
