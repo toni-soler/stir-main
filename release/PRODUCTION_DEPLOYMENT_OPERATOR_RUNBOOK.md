@@ -1,10 +1,11 @@
 # STIR production deployment — operator runbook (IDAX Ledger / private XRPL)
 
-Status: **NOT READY - two open issues found on DEV on 2026-11-11 (section 16).** A full simultaneous restart of the
-XRPL nodes does not reliably resume validation, and three validators tolerate zero validator failures. Both must be
-decided before this runbook is executed. Nothing in this document has been run against production - the author did not
-and must not run these commands; every production command below is for the operator to run on the host named in its
-`RUN ON:` label. The capacity figures in section 10 are measured over 23 days, not extrapolated.
+Status: **NOT READY - see section 16.** Decided and verified on DEV on 2026-11-12: five validators (quorum four), pruned
+validators with one full-history node that IDAX Ledger reads, seven-day logs, and a start command that resumes
+validation after uneven stops. Still open before production: a second copy of the full history, the start procedure
+when validators run on separate hosts, and the fact that this runbook has never been rehearsed end to end. Nothing in
+this document has been run against production - the author did not and must not run these commands; every production
+command below is for the operator to run on the host named in its `RUN ON:` label.
 
 Companion: `release/PRODUCTION_DEPLOYMENT_CHECKLIST.md` (tick-box version of section 14).
 
@@ -39,18 +40,24 @@ the correct, expected state for a tenant that was never meant to be ledger-enabl
 Each former open decision is now a checkpoint with a deterministic answer. The only inputs left are environment facts
 (how many hosts exist, what they measure) — never an architectural choice made up on deployment day.
 
-**CP1 — Topology profile.**
+**CP1 - Topology profile.** The network has FIVE validators and one non-validating full-history node (decided
+2026-11-12). xrpld needs 80% of the trusted validators: five give a quorum of four, so one validator can fail or be
+rebuilt while anchoring continues; three would give a quorum of three and no tolerance.
 ```
-CHECK: how many hosts, each under independent operational control, are available to run an XRPL validator?
-  1 host available   -> Profile A (single-host). Record the known risk: one host failure stops anchoring.
-                         Acceptable ONLY for the first production activation, not as a permanent target.
-  >= 3 hosts available -> Profile B (distributed, one validator per host).
-  2 hosts available   -> STOP. Get a third host or use Profile A explicitly (and record why).
+CHECK: how many hosts, each under independent operational control, are available to run validators?
+  1 host   -> Profile A (all six nodes on one host). One host failure stops anchoring; one validator process
+              failing does not. Acceptable ONLY for the first production activation.
+  >= 5     -> Profile B (one validator per host, history node on its own host or with one validator).
+  2 to 4   -> STOP and decide placement explicitly: no host may run two or more validators unless the operator
+              accepts that losing that host stops anchoring (two of five down = no quorum).
 ```
-Three validators give host separation but NO fault tolerance: xrpld requires 80% of the trusted validators, and
-`server_info` on DEV reports `validation_quorum: 3` with three validators. One validator down, or one validator that
-refuses to validate, stops anchoring for everyone. Tolerating one failed validator needs five (quorum 4). Whether
-production starts with three or five is an open decision (section 16).
+Verified on DEV: one of five stopped, the validated ledger kept advancing; two stopped, it halted; both started again
+with a plain `docker start`, it resumed with no other action.
+
+Negative UNL: a validator that stays down for long is disabled by the network itself and its validations stop
+counting until the network re-enables it at a later flag ledger (every 256 ledgers, about 15 minutes each). During that
+window the tolerance is already spent: stopping a second validator halts validation. Check
+`validators` -> `NegativeUNL` is empty before any planned validator stop.
 
 **CP2 — Genesis / network identity.** Always create a **new** private network; never reuse a DEV network id. Resolved
 by the mandatory check in section 4 — there is nothing left to decide, only to run and read the result.
@@ -185,7 +192,7 @@ install -m 600 -o <LEDGER_UID> -g <LEDGER_GID> <OFFLINE_MEDIA>/anchor.seed <RUNT
 
 ```sh
 IDAX_LEDGER_RUNTIME_PATH=<RUNTIME> XRPLD_IMAGE=<XRPLD_IMAGE> \
-  docker compose -p <XRPL_PROJECT> -f <REPO>/deploy/idax-ledger/compose.xrpl.yml up -d
+  IDAX_LEDGER_PROJECT=<XRPL_PROJECT> python3 <REPO>/deploy/idax-ledger/xrpl_start.py
 ```
 
 3. Wait for convergence with the read-only report (no restart):
@@ -199,18 +206,27 @@ Expected: validators `proposing`, at least 2 peers each, API node `full`, all va
 `xrpl_health.py` passes only if the validated ledger advances on every node and all nodes agree on its hash. Node
 state alone (`proposing`, peers) is not evidence of a working network.
 
-**Known limitation (DEV, 2026-11-11): a simultaneous start is not reliable once the network has history.** Nodes that
-stopped at different validated ledgers (observed after disk exhaustion, and again after an ordinary `docker compose up`
-recreate: tips 585102 and 585103) start building from the lowest tip; the nodes holding the later validated ledger log
-"Not validating incompatible with valid ledger" and, with a quorum of three out of three, nothing validates again. The
-two cold restarts that passed on 2026-10-05 were on a network a few thousand ledgers old and do not establish the
-general case.
+**Start and restart: always `start_xrpl.sh`, never a bare `docker compose up`.** Nodes that stopped at different
+validated ledgers and are started together build from the lowest one; the nodes holding a later validated ledger log
+"Not validating incompatible with valid ledger" and validation does not resume (DEV, 2026-11-11, twice).
+`xrpl_start.py` (called by `start_xrpl.sh`) reads each stopped node's last persisted ledger and starts the most
+advanced node first. Verified on DEV on 2026-11-12 with one validator killed and the rest stopped later: validation
+resumed in about 140 seconds, twice, with identical history on all six nodes.
 
-Recovery that worked twice on DEV, no data touched: stop all nodes; start one node that holds the highest validated
-ledger; wait about 40 seconds; start the other nodes that hold it; start the lagging node last; run `xrpl_health.py`.
-This is a manual sequence and is not acceptable as the production restart behaviour - see section 16.
+- After a host reboot run `start_xrpl.sh`. The containers use `restart: on-failure:5`; whether Docker starts them at
+  boot was not tested, and `start_xrpl.sh` is safe either way (it does nothing when the network is healthy and
+  performs the ordered start when it is not).
+- A single node that stopped while the others kept running needs only `docker start`.
+- A node whose store is damaged (seen once after a hard kill of a full-history node: "Missing node", exit 139 in a
+  loop) is repaired by moving its `data/db` directory aside and starting it; it syncs from its peers. For a pruned
+  validator that costs minutes. For the history node it costs the only full copy - see section 16.
+- `xrpl_start.py` reads local files and drives local Docker. With validators on separate hosts (Profile B) the same
+  order has to be applied across hosts; that procedure is not written yet (section 16).
 
-Keep `ledger_history=full` (D4). Do not run `docker compose down -v` on the XRPL project: it destroys the ledger.
+**Changing a running network from three to five validators** (done on DEV; not needed for a new production network):
+regenerate the configuration, keep the existing validators on full history, start them and the history node first,
+start the new validators one at a time, then convert the old validators to pruning one at a time by moving their
+store aside. A validator does not start with `online_delete` on a store created without it.
 
 ---
 
@@ -368,38 +384,31 @@ ENABLE procedure. `RUN ON: PROD-STIR`.
 
 ---
 
-## 10. Retention and capacity (measured on DEV over 23 days; re-measure on production)
+## 10. Retention and capacity (measured on DEV; re-measure on production)
 
-Measured on DEV from 2026-10-05 to 2026-10-28, network idle except for a handful of anchors, `ledger_history=full`:
+The network closes about 17 ledgers a minute whether or not anything is anchored, and every ledger, even an empty one,
+rewrites the recent-ledger-hashes object: about 9 KB per ledger per node. Growth follows time, not STIR traffic, and
+cannot be configured away. It is bounded by pruning.
 
-| Per node | Measured | Per day | Per year |
+| Node | History kept | Measured on DEV | Growth |
 |---|---|---|---|
-| Ledger data (NuDB 5.0 GB + SQLite 0.23 GB at ledger 584,970) | 5.2 GB in 23.5 days | about 0.22 GB | about 81 GB |
-| Validator debug log, uncompressed, `log_level warning` | 2.8 GB in 23.5 days | about 0.12 GB | bounded by rotation |
-| API node debug log, uncompressed | 0.29 GB in 23.5 days | about 0.012 GB | bounded by rotation |
+| Validator (x5) | last 50,000 ledgers (`online_delete`, about two days) | 0.45 GB at 50,000 ledgers | none after the store rotates; budget 1 GB (the store holds up to twice the window) |
+| History node (x1) | full (`ledger_history=full`) | 5.2 GB in 23.5 days | about 0.22 GB a day, about 81 GB a year |
+| Logs, per validator | seven days, compressed | 0.12 GB a day uncompressed, ratio about 3.7:1 | budget 0.5 GB |
+| Logs, history node | seven days, compressed | 0.012 GB a day uncompressed | budget 0.1 GB |
 
-- The network closes about 17 ledgers per minute whether or not anything is anchored, about 9 KB per ledger per node.
-  Growth is driven by time, not by STIR traffic.
-- Logs: `deploy/idax-ledger/xrpld-entrypoint.sh` rotates daily (or at `XRPLD_LOG_MAX_MB`, default 512), compresses
-  (measured ratio about 3.7:1) and deletes after `XRPLD_LOG_KEEP_DAYS` (default 7). Budget **0.5 GB per validator** and
-  0.1 GB for the API node. Raising the log level for diagnosis raises this; the size trigger still bounds each file.
-- Disk per node for full history: `0.22 GB x days_of_history + 0.5 GB logs`, plus 2x headroom. One year: about 165 GB
-  per node with headroom. Profile A (four nodes on one disk): about 0.9 GB per day, about 650 GB for one year with
-  headroom.
-- The earlier figures in this section (22 MB per validator, from a 60-second sample) were wrong by two orders of
-  magnitude as a sizing basis and have been removed.
+- Disk per validator host: 2 GB for the node, plus headroom. Disk for the history node: `0.22 GB x days + 0.1 GB`,
+  2x headroom: about 165 GB for one year.
+- Profile A (all six nodes on one disk): about 0.22 GB a day in total, about 175 GB for one year with headroom.
+  Before pruning the same network grew about 0.9 GB a day and filled a 95 GB disk in 23 days.
+- IDAX Ledger must read the history node: verifying an old proof fetches the old transaction and ledger. Checked on
+  DEV: the October anchor transaction is found on the history node and returns `txnNotFound` on a pruned validator.
+  `compose.ledger.yml` sets the first (primary) node to `api-01`.
 
-xrpld stops itself when less than 512 MB is free ("Out of transaction DB space"). Each node then stops at a different
-moment and persists a different last validated ledger, which is the condition that prevents an unattended restart
-(section 7). Disk exhaustion must therefore be prevented, not recovered from.
-
-Alert thresholds to configure before activation: disk free below 20% (page), below 10% (stop anchoring and act);
-ledger outbox `FAILED_RETRYABLE` count growing for more than 15 minutes; validated ledger not advancing for 60 seconds
-(`xrpl_health.py` exit status).
-
-Pruning history (`online_delete`) on the validators while one full-history node serves verification would cut growth
-by about three quarters, but the IDAX Ledger service currently reads the validators directly
-(`IDAX_LEDGER_XRPL_NODE_0x_URL`), so it is a design change, not a setting. Not applied; open decision (section 16).
+xrpld stops itself when less than 512 MB is free ("Out of transaction DB space"); nodes then stop at different validated
+ledgers. Alert thresholds to configure before activation: disk free below 20% (page), below 10% (act); validated ledger
+not advancing for 60 seconds (`xrpl_health.py` exit status); ledger outbox `FAILED_RETRYABLE` growing for more than
+15 minutes; `NegativeUNL` not empty.
 
 ---
 
@@ -476,13 +485,13 @@ its own tenant has gone through the real ENABLE procedure for a real reason, not
 
 - AUD-012 (runtime credential can write governed state): MITIGATED — DETECTED ONLY, OPEN. Not closed by this release.
 - AUD-007: OPEN.
-- **Restart behaviour (blocking).** A full simultaneous restart can leave the network permanently unvalidated
-  (section 7). Needs a decision: an automated ordered start in `start_xrpl.sh` plus a rule for host reboots, or a
-  different startup mode for xrpld, investigated and tested repeatedly on a network with history.
-- **Validator count (blocking).** Three validators means quorum three: no tolerance for one failed validator
-  (CP1). Decide three (accepting that) or five.
-- **History retention.** Full history costs about 81 GB per node per year (section 10). Decide full history everywhere,
-  or pruned validators with a full-history node for verification (requires a change in how IDAX Ledger reads the chain).
+- **Single full-history copy (blocking).** Only the history node can verify old proofs, and IDAX Ledger submits
+  through it. If it is down, anchoring and verification stop even though the validators continue; if its store is
+  damaged, the history older than the validators' window is gone. Decide: a second history node, or scheduled backups
+  of its store, before production.
+- **Ordered start across hosts (blocking for Profile B).** Section 7.
+- **Never rehearsed.** No one has executed this runbook from the first step to the last on a clean host.
+- **Host reboot.** A boot-time unit that runs `start_xrpl.sh` is not written or tested.
 - Genesis, validator independence and retention are now deployment-time checkpoints (section 2, CP1–CP5), not open
   architecture decisions — but their actual answers (host count, measured growth, measured fee/reserve) are still
   environment inputs this document cannot supply in advance.
