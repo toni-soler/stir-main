@@ -6,11 +6,13 @@ ledger, complete ledger ranges). Never prints secrets.
   python3 deploy/idax-ledger/xrpl_health.py [--json] [--window SECONDS]
 
 Exit status 0 only when every validator is `proposing` with at least two peers, the API node is `full`, the
-validated ledger ADVANCES on every node during the sampling window (default 15 s), and every node reports the same hash
+validated ledger ADVANCES on every node during the sampling window (default 15 s, or XRPLD_IDLE_INTERVAL_SECONDS + 30
+when that is set, because an idle network then closes one ledger per interval), and every node reports the same hash
 for the same validated ledger. State alone is not health: after the 2026-10-28 disk exhaustion all four nodes reported
 proposing/full with three peers while each sat on a different validated ledger and none advanced.
 """
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -44,10 +46,16 @@ def validated_seq(url):
 
 
 def main():
-    window = int(sys.argv[sys.argv.index("--window") + 1]) if "--window" in sys.argv else 15
+    idle = int(os.environ.get("XRPLD_IDLE_INTERVAL_SECONDS") or 0)
+    window = int(sys.argv[sys.argv.index("--window") + 1]) if "--window" in sys.argv else (idle + 30 if idle else 15)
     report, healthy = [], True
     before = {name: validated_seq(url) for name, url, _ in NODES}
-    time.sleep(window)
+    # Stop waiting as soon as every node has advanced; the window is the longest wait, not a fixed sleep.
+    deadline = time.time() + window
+    while time.time() < deadline:
+        time.sleep(min(5, window))
+        if all((validated_seq(url) or 0) > (before[name] or 0) for name, url, _ in NODES):
+            break
     for name, url, expected_state in NODES:
         try:
             info = server_info(url)
@@ -89,7 +97,7 @@ def main():
     else:
         for row in report:
             print(f"{row['node']:13} net={row['networkId']} state={row['serverState']:11} peers={row['peers']} "
-                  f"validated={row['validatedLedgerSeq']} (+{row['validatedLedgerAdvanced']} in {window}s) "
+                  f"validated={row['validatedLedgerSeq']} (+{row['validatedLedgerAdvanced']} within {window}s) "
                   f"complete={row['completeLedgers']} build={row['buildVersion']}")
         print(f"same validated chain at ledger {common}: {'yes' if agreed else 'NO'}")
         print("HEALTHY" if healthy else "NOT HEALTHY")

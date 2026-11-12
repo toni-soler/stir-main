@@ -35,7 +35,8 @@ NODES = [name for name, _, _ in xrpl_health.NODES]
 URLS = {name: url for name, url, _ in xrpl_health.NODES}
 FIRST_NODE_SETTLE_SECONDS = 20
 NEXT_NODE_GAP_SECONDS = 15
-HEALTH_TIMEOUT_SECONDS = 600
+# With an idle interval the health check itself waits up to one interval per attempt.
+HEALTH_TIMEOUT_SECONDS = 600 + 3 * int(os.environ.get("XRPLD_IDLE_INTERVAL_SECONDS") or 0)
 
 
 def run(*args):

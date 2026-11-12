@@ -20,7 +20,8 @@ HIST=$((VAL - 30))
 BEFORE=$(hash_at "$FIRST" "$HIST")
 echo "pre validated=$VAL historical=$HIST hash=$BEFORE victim=$VICTIM" | tee "$OUT/meta.txt"
 docker kill "$PROJECT-$VICTIM" > "$OUT/stop.log" 2>&1
-sleep 12
+# Long enough for the remaining validators to validate at least one more ledger.
+sleep $(( ${XRPLD_IDLE_INTERVAL_SECONDS:-0} + 12 ))
 for node in $NODES; do [ "$node" = "$VICTIM" ] || docker stop -t 60 "$PROJECT-$node" >> "$OUT/stop.log" 2>&1; done
 START=$(date +%s)
 python3 "$DIR/xrpl_start.py" --force > "$OUT/start.txt" 2>&1 || { cat "$OUT/start.txt"; echo "RESTART: FAIL (not healthy)" | tee -a "$OUT/meta.txt"; exit 1; }

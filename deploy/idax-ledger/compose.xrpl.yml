@@ -23,6 +23,9 @@ x-validator: &validator
     XRPLD_LOG_KEEP_DAYS: ${XRPLD_LOG_KEEP_DAYS:-7}
     XRPLD_LOG_MAX_MB: ${XRPLD_LOG_MAX_MB:-512}
     XRPLD_LOG_CHECK_SECONDS: ${XRPLD_LOG_CHECK_SECONDS:-300}
+    # Seconds an EMPTY ledger stays open. Only honoured by the patched xrpld (toni-soler/rippled, branch
+    # idax/idle-interval-3.3.0); empty = upstream behaviour (an empty ledger every 3-4 s). Same value on every node.
+    XRPLD_IDLE_INTERVAL_SECONDS: ${XRPLD_IDLE_INTERVAL_SECONDS:-}
   # on-failure with a cap, not unless-stopped: a node that cannot start (disk full, damaged store) restarted 8,500
   # times on DEV. After a host reboot or a full stop the network is started with start_xrpl.sh, never by Docker.
   restart: on-failure:5
