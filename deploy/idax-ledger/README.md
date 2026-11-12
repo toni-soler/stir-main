@@ -79,8 +79,9 @@ That is acceptable only on DEV. Production requires its own genesis decision bef
 - One validator stopped: validation continued. Two stopped: halted. Both started again: resumed.
 - A validator that was down for hours stays on the Negative UNL until the network re-enables it; until then a second
   validator stop halts validation. That, not load, made the first tolerance test fail.
-- DEV migration left the old stores next to the new ones, renamed, not deleted:
-  `validator-01|02/data/db.full-history-2026-11-12`, `validator-03/data/db.damaged-2026-11-12` (about 5 GB each).
+- The old stores set aside during the DEV migration were deleted on 2026-11-12 after checking that `api-01` holds
+  ledgers 88 onwards and that the first transaction on the network is in ledger 135.
+- Decided 2026-11-12: add a second full-history node. Not implemented yet.
 - Evidence: `~/idax-ledger-dev/evidence/restart-2026-11-12/` and `topology-2026-11-12/` on the DEV host.
 
 ## Observed operational behaviour (DEV, 2026-10-05)

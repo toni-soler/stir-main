@@ -487,8 +487,9 @@ its own tenant has gone through the real ENABLE procedure for a real reason, not
 - AUD-007: OPEN.
 - **Single full-history copy (blocking).** Only the history node can verify old proofs, and IDAX Ledger submits
   through it. If it is down, anchoring and verification stop even though the validators continue; if its store is
-  damaged, the history older than the validators' window is gone. Decide: a second history node, or scheduled backups
-  of its store, before production.
+  damaged, the history older than the validators' window is gone. Decided 2026-11-12: a second full-history node
+  (not scheduled backups). Not implemented yet: compose service, configuration, IDAX Ledger second node URL and a
+  failover test are still to be written and verified on DEV before production.
 - **Ordered start across hosts (blocking for Profile B).** Section 7.
 - **Never rehearsed.** No one has executed this runbook from the first step to the last on a clean host.
 - **Host reboot.** A boot-time unit that runs `start_xrpl.sh` is not written or tested.
