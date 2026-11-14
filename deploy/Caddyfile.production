@@ -27,6 +27,19 @@
   handle /api/stir/* {
     reverse_proxy stir:8096
   }
+  # INTERIM CONTAINMENT (controller-ownership finding): the public edge refuses osTRIS credential
+  # add/revoke. osTRIS authorises these on a tenant-wide capability only, with no per-user owner
+  # check in deployed runtimes yet, so a direct caller could manage another participant's
+  # controller. STIR's own device management is unaffected: it reaches osTRIS over the internal
+  # network (ostris:8095), not through this edge. REMOVE this block once the osTRIS runtime that
+  # records/enforces controller ownership is deployed. See ostris-doc CONTROLLER_OWNERSHIP.md.
+  @ostris_credential_mutation {
+    method POST
+    path_regexp ostris_cred ^/api/ostris/communities/[^/]+/credentials(/[^/]+/revoke)?$
+  }
+  handle @ostris_credential_mutation {
+    respond "credential management is temporarily closed on the public osTRIS surface" 403
+  }
   handle /api/ostris/* {
     reverse_proxy ostris:8095
   }
