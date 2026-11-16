@@ -5,6 +5,7 @@ Routing is not authorization: the verifier has to reject these by itself. Dispos
 """
 import base64
 import json
+import os
 import re
 import subprocess
 import uuid
@@ -15,11 +16,15 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from community_references_e2e import fixtures
 from market_integrity_e2e import BOOTSTRAP, DOMAIN, GUARDIAN, digest, rawkey, sign
-from multitenant import sql
+from multitenant import compose_project, sql
 from smoke import ROOT, request
 
-PROJECT = 'stir-claude-mvp'
-COMPOSE = ['docker', 'compose', '-p', PROJECT, '-f', str(ROOT / 'compose.yml'), '-f', str(ROOT / 'compose.release.yml')]
+# The attacks run inside the stack under test, never a fixed project: STIR_COMPOSE_PROJECT is
+# required (and stir-dev refused) exactly as for every other fixture helper. Extra compose files
+# that stack was started with go in STIR_COMPOSE_FILES (comma-separated, relative to stir-main).
+PROJECT = compose_project()
+COMPOSE = ['docker', 'compose', '-p', PROJECT] + [arg for name in os.environ.get('STIR_COMPOSE_FILES', '').split(',')
+                                                  if name.strip() for arg in ('-f', str(ROOT / name.strip()))]
 VERIFIER = 'http://governed-verifier:8096'
 
 
