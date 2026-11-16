@@ -1,5 +1,26 @@
 # Changelog
 
+## security: osTRIS 0.5.0 and IDAX Core Runtime 0.5.0; the osTRIS application-surface patch is retired
+
+osTRIS 0.5.0 ships the public application surface itself (discovery, participant activation,
+credential management, transaction status), so `patches/ostris-0.4-public-application-surface.patch`
+is removed; the reviewed migration-switch patches for osTRIS and Ledger remain.
+
+This also closes a finding in that surface: osTRIS recorded no owner for a controller and
+authorised credential add/revoke on the tenant-wide `OSTRIS_CREDENTIAL_MANAGE` permission alone,
+so a participant calling osTRIS directly through the public proxy could add a key to, or revoke a
+device from, another participant's controller. osTRIS now records the owner at activation and
+checks it on every credential change, independently of permissions and superuser status.
+
+Operational consequences of upgrading an existing deployment:
+
+- osTRIS migrations V6 (controller ownership) and V7 (operation-approval consumption) run.
+- Controllers created before the upgrade have no recorded owner and are locked for device
+  management (`CONTROLLER_OWNERSHIP_UNASSIGNED`): their participants keep signing with their
+  existing devices but cannot add or revoke one until the participant is re-provisioned.
+- `ostris.security.credential-approval.required` stays off: requiring an authenticator code for
+  device changes needs two-step sign-in enabled and the matching Shell/STIR versions.
+
 ## fix: MinIO registry dead again (quay.io), switched to a maintained fork
 
 The previous fix (switching `minio/minio` from `docker.io` to `quay.io`, 2026-09-24) was
