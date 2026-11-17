@@ -9,7 +9,7 @@ import subprocess
 
 def prepare(root):
     patches={"idax-ledger":["idax-ledger-0.3-migration-switch.patch"],
-             "ostris":["ostris-0.3-migration-switch.patch", "ostris-0.4-public-application-surface.patch"]}
+             "ostris":["ostris-0.3-migration-switch.patch"]}
     for name,filenames in patches.items():
         repo=root/"vendor"/name
         untracked=subprocess.check_output(["git","-C",str(repo),"ls-files","--others","--exclude-standard"])

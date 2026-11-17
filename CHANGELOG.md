@@ -1,5 +1,45 @@
 # Changelog
 
+## feat: IDAX Shell with two-step sign-in and per-operation approvals
+
+The Shell pin moves to `449dcc9` (idax-shell `main`, built on IDAX Core Runtime 0.5.0):
+
+- The Shell login screen supports two-step sign-in: authenticator or recovery code, and forced
+  setup with one-time recovery codes when a workspace requires it. Wrong, reused and expired
+  codes are explained; no session exists before the flow completes.
+- MFA outcomes are relayed with stable codes instead of a bare 500.
+- `POST /api/shell/v1/tenants/{tenantId}/operation-approvals` issues a short-lived approval for
+  exactly one operation after a fresh authenticator code (members of that workspace only). STIR's
+  device panel uses it when osTRIS requires an approval for device changes.
+
+Two-step sign-in stays off unless `IDAX_SECURITY_MFA_ENABLED=true` and
+`IDAX_SECURITY_ENCRYPTION_KEY` (32 bytes, base64) are configured for the Shell service; the
+osTRIS approval requirement stays off (`OSTRIS_SECURITY_CREDENTIAL_APPROVAL_REQUIRED`).
+
+Requires stir-backend with the governed-verifier boundary (V20/V21) merged: the governed-verifier
+service in this deployment cannot be provisioned without it.
+
+## security: osTRIS 0.5.0 and IDAX Core Runtime 0.5.0; the osTRIS application-surface patch is retired
+
+osTRIS 0.5.0 ships the public application surface itself (discovery, participant activation,
+credential management, transaction status), so `patches/ostris-0.4-public-application-surface.patch`
+is removed; the reviewed migration-switch patches for osTRIS and Ledger remain.
+
+This also closes a finding in that surface: osTRIS recorded no owner for a controller and
+authorised credential add/revoke on the tenant-wide `OSTRIS_CREDENTIAL_MANAGE` permission alone,
+so a participant calling osTRIS directly through the public proxy could add a key to, or revoke a
+device from, another participant's controller. osTRIS now records the owner at activation and
+checks it on every credential change, independently of permissions and superuser status.
+
+Operational consequences of upgrading an existing deployment:
+
+- osTRIS migrations V6 (controller ownership) and V7 (operation-approval consumption) run.
+- Controllers created before the upgrade have no recorded owner and are locked for device
+  management (`CONTROLLER_OWNERSHIP_UNASSIGNED`): their participants keep signing with their
+  existing devices but cannot add or revoke one until the participant is re-provisioned.
+- `ostris.security.credential-approval.required` stays off: requiring an authenticator code for
+  device changes needs two-step sign-in enabled and the matching Shell/STIR versions.
+
 ## fix: MinIO registry dead again (quay.io), switched to a maintained fork
 
 The previous fix (switching `minio/minio` from `docker.io` to `quay.io`, 2026-09-24) was
