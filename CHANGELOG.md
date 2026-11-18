@@ -1,5 +1,9 @@
 # Changelog
 
+## User manual browser check
+
+`scripts/manual_browser_check.py` opens the user manual from the STIR tabs in a real browser and checks its chapters, styles and print layout, that every screenshot loads, and that the English copy is one link away. `scripts/manual_screenshots.py` builds an isolated synthetic community and takes the manual's screenshots from the real UI in Spanish and English; rerun it whenever an MVP changes those screens.
+
 ## Agreement cases E2E and osTRIS resolution pin
 
 `scripts/agreement_cases_e2e.py` (50 checks) and `scripts/agreement_cases_browser.py` prove cases end to end against a real osTRIS, including an adjudicated reversal signed by two reviewers. The osTRIS pin moves to the commit with the resolution authority and basis surface.
