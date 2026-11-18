@@ -13,6 +13,10 @@ from smoke import BASE, ROOT, request
 ARTIFACTS = pathlib.Path(os.environ.get('STIR_E2E_ARTIFACTS', 'e2e-artifacts'))
 
 
+ENGLISH_TITLE = 'STIR user manual'
+MIN_FIGURES = 8
+
+
 def main():
     admin = request('/api/shell/v1/auth/login', 'POST', {'email': 'admin@stir.test', 'password': (ROOT / '.local/secrets/login_password').read_text().strip()})['accessToken']
     suffix = uuid.uuid4().hex[:8]; name = 'Manual ' + suffix
@@ -52,8 +56,22 @@ def main():
             manual.screenshot(path=str(ARTIFACTS / 'manual-stir.png'))
             manual.emulate_media(media='print')
             assert manual.locator('aside').evaluate("e => getComputedStyle(e).display") == 'none'
+            manual.emulate_media(media='screen')
+            # Every screenshot in the manual loads, and the English copy is one link away with the same chapters.
+            for copy in ('es', 'en'):
+                if copy == 'en':
+                    manual.locator('header a', has_text='English version').click()
+                    expect(manual.locator('h1')).to_have_text(ENGLISH_TITLE)
+                    assert manual.locator('main section').count() == chapters
+                manual.wait_for_load_state('networkidle')
+                images = manual.locator('main figure img')
+                for i in range(images.count()):
+                    images.nth(i).scroll_into_view_if_needed()
+                    expect(images.nth(i)).to_have_js_property('complete', True)
+                    assert images.nth(i).evaluate('img => img.naturalWidth') > 600, images.nth(i).get_attribute('src')
+                assert images.count() >= MIN_FIGURES, images.count()
             assert not problems, problems
-            print(f'PASS: the STIR manual opens from the tabs with its {chapters} chapters, its own CSS, and prints without navigation')
+            print(f'PASS: the STIR manual opens from the tabs with its {chapters} chapters, its own CSS, prints without navigation, shows every screenshot, and has an English copy')
             print('STIR MANUAL BROWSER CHECK: PASS')
         finally:
             browser.close()
