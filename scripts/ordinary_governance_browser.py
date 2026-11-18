@@ -12,7 +12,7 @@ PostgreSQL with a backdated voting_closes_at (OrdinaryGovernancePostgresTest).
 import secrets
 import uuid
 from playwright.sync_api import sync_playwright, expect
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
@@ -50,7 +50,7 @@ def main():
         try:
             def login(page, credentials):
                 page.set_default_timeout(30000); page.on('pageerror', lambda e: errors.append(str(e)))
-                page.goto('http://localhost:8089')
+                page.goto(BASE)
                 page.locator('input[type=email]').fill(credentials[0]); page.locator('input[type=password]').fill(credentials[1])
                 page.locator('button[type=submit]').click()
                 page.locator('.module-card').filter(has=page.get_by_role('heading', name='STIR', exact=True)).click()
@@ -60,7 +60,7 @@ def main():
             v1_page = browser.new_context(locale='es-ES', viewport={'width': 1440, 'height': 1800}).new_page()
             v2_page = browser.new_context(locale='es-ES', viewport={'width': 1440, 'height': 1800}).new_page()
             login(manager_page, manager_login)
-            manager_page.goto('http://localhost:8089/stir/references')
+            manager_page.goto(BASE + '/stir/references')
             manager_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
             manager_page.get_by_text('Gobernanza comunitaria ordinaria', exact=True).click()
             gov = manager_page.locator('details').filter(has_text='Gobernanza comunitaria ordinaria').first
@@ -100,7 +100,7 @@ def main():
 
             # --- Two independent voter sessions cast real votes; the tally updates live ---
             login(v1_page, v1_login)
-            v1_page.goto('http://localhost:8089/stir/references')
+            v1_page.goto(BASE + '/stir/references')
             v1_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
             v1_page.get_by_text('Gobernanza comunitaria ordinaria', exact=True).click()
             v1_gov = v1_page.locator('details').filter(has_text='Gobernanza comunitaria ordinaria').first
@@ -108,7 +108,7 @@ def main():
             expect(v1_gov.get_by_text('A favor: 1', exact=False)).to_be_visible()
 
             login(v2_page, v2_login)
-            v2_page.goto('http://localhost:8089/stir/references')
+            v2_page.goto(BASE + '/stir/references')
             v2_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
             v2_page.get_by_text('Gobernanza comunitaria ordinaria', exact=True).click()
             v2_gov = v2_page.locator('details').filter(has_text='Gobernanza comunitaria ordinaria').first

@@ -4,7 +4,7 @@ Listing, the Home dashboard, notifications, and device management - on top of th
 """
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql
 from economic_browser_smoke import PERMISSIONS as ECONOMIC_PERMISSIONS
 import secrets
@@ -39,7 +39,7 @@ def main():
             ana.set_default_timeout(60000)
             ana.on("pageerror", lambda error: errors.append(str(error)))
 
-            ana.goto("http://localhost:8089")
+            ana.goto(BASE)
             ana.locator("input[type=email]").fill(ana_email)
             ana.locator("input[type=password]").fill(ana_password)
             ana.locator("button[type=submit]").click()

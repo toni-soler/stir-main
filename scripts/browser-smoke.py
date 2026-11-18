@@ -2,6 +2,7 @@
 from pathlib import Path
 import uuid
 from playwright.sync_api import sync_playwright, expect
+from smoke import BASE
 
 ROOT=Path(__file__).resolve().parents[1]
 with sync_playwright() as playwright:
@@ -11,7 +12,7 @@ with sync_playwright() as playwright:
         page.set_default_timeout(60000)
         errors=[]
         page.on("pageerror",lambda error:errors.append(str(error)))
-        page.goto("http://localhost:8089")
+        page.goto(BASE)
         page.locator("input[type=email]").fill("admin@stir.test")
         page.locator("input[type=password]").fill((ROOT/".local/secrets/login_password").read_text().strip())
         page.locator("button[type=submit]").click()

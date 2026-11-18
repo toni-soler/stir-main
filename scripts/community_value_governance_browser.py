@@ -8,7 +8,7 @@ its own browser session.
 import re
 import uuid
 from playwright.sync_api import sync_playwright, expect
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
@@ -37,7 +37,7 @@ def main():
         try:
             def login(page,credentials):
                 page.set_default_timeout(30000);page.on('pageerror',lambda e:errors.append(str(e)))
-                page.goto('http://localhost:8089');page.locator('input[type=email]').fill(credentials[0]);page.locator('input[type=password]').fill(credentials[1]);page.locator('button[type=submit]').click()
+                page.goto(BASE);page.locator('input[type=email]').fill(credentials[0]);page.locator('input[type=password]').fill(credentials[1]);page.locator('button[type=submit]').click()
                 page.locator('.module-card').filter(has=page.get_by_role('heading',name='STIR',exact=True)).click()
                 page.locator('.surface > header select').first.select_option(label=name)
 
@@ -45,7 +45,7 @@ def main():
             pedro=browser.new_context(locale='es-ES',viewport={'width':1440,'height':1600}).new_page()
             diego=browser.new_context(locale='es-ES',viewport={'width':1440,'height':1600}).new_page()
             login(ana,ana_login)
-            ana.goto('http://localhost:8089/stir/references')
+            ana.goto(BASE + '/stir/references')
 
             # --- Create the definition, confirm the publisher toolkit is reachable and empty ---
             ana.get_by_text('Crear definición comparable',exact=True).first.click()
@@ -79,7 +79,7 @@ def main():
             expect(ana.get_by_test_id('reference-panel').get_by_text('Assembly convention, not an observed price',exact=True)).to_be_visible()
 
             # --- A real listing and a real accepted Agreement, building one raw observation ---
-            ana.goto('http://localhost:8089/stir/new')
+            ana.goto(BASE + '/stir/new')
             title='Rice bag '+suffix
             ana.get_by_label('Título',exact=False).fill(title)
             ana.get_by_label('Descripción',exact=False).fill('1kg bag of rice')
@@ -90,7 +90,7 @@ def main():
             ana.get_by_role('button',name='Listo',exact=True).click()
 
             login(pedro,pedro_login)
-            pedro.goto('http://localhost:8089/stir')
+            pedro.goto(BASE + '/stir')
             pedro.get_by_label('Buscar',exact=True).fill(title)
             pedro.get_by_role('button',name=title,exact=True).click()
             pedro.get_by_role('button',name='Hacer una propuesta',exact=True).click()
@@ -110,7 +110,7 @@ def main():
             # not eligible yet (see MARKET_INTEGRITY.md's daily UTC cutoff / anti-live-differencing,
             # already proven at the PostgreSQL level with backdated observations) - what the UI must
             # get right is showing the growing raw count without ever losing or hiding that row. ---
-            ana.goto('http://localhost:8089/stir/references')
+            ana.goto(BASE + '/stir/references')
             ana.get_by_label('Definición comparable',exact=False).select_option(value=definition_id)
             ana.get_by_text('Desglose de la evidencia',exact=True).click()
             expect(ana.get_by_text('Observaciones brutas: 2',exact=False)).to_be_visible()
@@ -130,7 +130,7 @@ def main():
             expect(case.get_by_text('En revisión',exact=True)).to_be_visible()
 
             login(diego,diego_login)
-            diego.goto('http://localhost:8089/stir/references')
+            diego.goto(BASE + '/stir/references')
             diego.get_by_label('Definición comparable',exact=False).select_option(value=definition_id)
             diego.get_by_text('Integridad de mercado',exact=True).click()
             diego_integrity=diego.locator('details').filter(has_text='Integridad de mercado')
@@ -144,7 +144,7 @@ def main():
             history_before=request(base+'/references/'+definition_id+'/history',token=a)
             assert len(history_before)==1
 
-            ana.goto('http://localhost:8089/stir/references')
+            ana.goto(BASE + '/stir/references')
             ana.get_by_label('Definición comparable',exact=False).select_option(value=definition_id)
             ana.locator('summary').filter(has_text='Proponer referencia').click()
             propose2=ana.locator('details').filter(has_text='Proponer referencia').first

@@ -25,7 +25,7 @@ import sys
 import time
 import requests
 from pathlib import Path
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql, compose_project, verify_isolated_container
 
 PHOTO = ROOT / '.local/test-assets/test-photo.jpg'
@@ -54,7 +54,7 @@ def create_marker():
     token = session['accessToken']
 
     title = 'Backup restore marker ' + suffix
-    base = f'http://localhost:8089/api/stir/tenants/{tenant}'
+    base = f'{BASE}/api/stir/tenants/{tenant}'
     headers = {'Authorization': 'Bearer ' + token}
     listing = requests.post(base + '/listings', json={
         'direction': 'OFFER', 'title': title, 'description': 'Proves the backup/restore round trip',
@@ -150,7 +150,7 @@ def main():
 
     session = request('/api/shell/v1/auth/login', 'POST', {'email': marker['email'], 'password': marker['password']})
     token = session['accessToken']
-    base = f"http://localhost:8089/api/stir/tenants/{marker['tenant']}"
+    base = f"{BASE}/api/stir/tenants/{marker['tenant']}"
     listing = requests.get(base + f"/listings/{marker['listing_id']}", headers={'Authorization': 'Bearer ' + token}, timeout=30)
     assert listing.status_code == 200 and listing.json()['title'] == marker['title'], 'restored Listing must be reachable through the real API with its original title'
     # A short retry: MinIO can serve a transient "unreadable, reduce your request rate" error for

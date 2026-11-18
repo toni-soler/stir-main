@@ -4,7 +4,7 @@ Only creates isolated local development fixtures; credentials remain in process 
 import uuid
 import re
 from playwright.sync_api import sync_playwright, expect
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
@@ -29,11 +29,11 @@ def main():
             pedro=browser.new_context(locale='es-ES',viewport={'width':1440,'height':1100}).new_page()
             def login(page,credentials):
                 page.set_default_timeout(30000);page.on('pageerror',lambda e:errors.append(str(e)))
-                page.goto('http://localhost:8089');page.locator('input[type=email]').fill(credentials[0]);page.locator('input[type=password]').fill(credentials[1]);page.locator('button[type=submit]').click()
+                page.goto(BASE);page.locator('input[type=email]').fill(credentials[0]);page.locator('input[type=password]').fill(credentials[1]);page.locator('button[type=submit]').click()
                 page.locator('.module-card').filter(has=page.get_by_role('heading',name='STIR',exact=True)).click()
                 page.locator('.surface > header select').first.select_option(label=name)
             login(ana,ana_login)
-            ana.goto('http://localhost:8089/stir/references')
+            ana.goto(BASE + '/stir/references')
             ana.get_by_text('Crear definición comparable',exact=True).first.click()
             ana.get_by_label('Nombre',exact=True).fill('Pan 500g '+suffix)
             ana.get_by_label('Ámbito de comparación',exact=True).fill('Una barra de pan de 500g')
@@ -53,7 +53,7 @@ def main():
                 expect(page.get_by_test_id('reference-panel').get_by_text(explanation,exact=True)).to_be_visible()
             publish(ana,'10','Convención inicial revisable','Primera asamblea')
             definition=request(base+'/references',token=a)[0]
-            ana.goto('http://localhost:8089/stir/new')
+            ana.goto(BASE + '/stir/new')
             title='Pan comunitario '+suffix
             ana.get_by_label('Título',exact=False).fill(title)
             ana.get_by_label('Descripción',exact=False).fill('Barra de pan de 500g')
@@ -61,7 +61,7 @@ def main():
             ana.get_by_role('button',name='Guardar y añadir fotos',exact=True).click()
             ana.get_by_role('button',name='Listo',exact=True).click()
             login(pedro,pedro_login)
-            pedro.goto('http://localhost:8089/stir')
+            pedro.goto(BASE + '/stir')
             pedro.get_by_label('Buscar',exact=True).fill(title)
             pedro.get_by_role('button',name=title,exact=True).click()
             expect(pedro.get_by_text('Convención inicial revisable',exact=True)).to_be_visible()
@@ -95,7 +95,7 @@ def main():
             agreement_url=pedro.url
             expect(pedro.get_by_text('Convención inicial revisable',exact=True)).to_be_visible()
             pedro.screenshot(path=str(ROOT/'.local/reference-agreement-v1.png'),full_page=True)
-            ana.goto('http://localhost:8089/stir/references')
+            ana.goto(BASE + '/stir/references')
             ana.get_by_label('Definición comparable',exact=False).select_option(value=definition['id'])
             publish(ana,'25','Convención revisada deliberadamente','Segunda asamblea')
             ana.screenshot(path=str(ROOT/'.local/reference-published-v2.png'),full_page=True)

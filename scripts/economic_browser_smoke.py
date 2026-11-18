@@ -8,7 +8,7 @@ requirements-browser.txt. Isolated development fixtures only.
 import secrets
 import uuid
 from playwright.sync_api import sync_playwright, expect
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_e2e import PERMISSIONS as MARKETPLACE_PERMISSIONS
 
@@ -49,7 +49,7 @@ def main():
                 page.on("pageerror", lambda error: errors.append(str(error)))
 
             def login(page, email, password):
-                page.goto("http://localhost:8089")
+                page.goto(BASE)
                 page.locator("input[type=email]").fill(email)
                 page.locator("input[type=password]").fill(password)
                 page.locator("button[type=submit]").click()
