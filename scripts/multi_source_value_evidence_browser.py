@@ -23,7 +23,7 @@ governance browser script in this session.
 """
 import uuid
 from playwright.sync_api import sync_playwright, expect
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
@@ -62,7 +62,7 @@ def main():
         try:
             def login(page, credentials):
                 page.set_default_timeout(30000); page.on('pageerror', lambda e: errors.append(str(e)))
-                page.goto('http://localhost:8089')
+                page.goto(BASE)
                 page.locator('input[type=email]').fill(credentials[0]); page.locator('input[type=password]').fill(credentials[1])
                 page.locator('button[type=submit]').click()
                 page.locator('.module-card').filter(has=page.get_by_role('heading', name='STIR', exact=True)).click()
@@ -73,7 +73,7 @@ def main():
             login(ana_page, manager_login)
 
             # --- Ana publishes a real LISTING with an indicative price and explicit consent ---
-            ana_page.goto('http://localhost:8089/stir/new')
+            ana_page.goto(BASE + '/stir/new')
             ana_page.get_by_label('Título', exact=False).fill('Wool bundle ' + suffix)
             ana_page.get_by_label('Descripción', exact=False).fill('Real fleece, browser fixture')
             ana_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
@@ -88,7 +88,7 @@ def main():
 
             # --- Pedro publishes a real WANTED with his own indicative price ---
             login(pedro_page, pedro_login)
-            pedro_page.goto('http://localhost:8089/stir/new')
+            pedro_page.goto(BASE + '/stir/new')
             pedro_page.get_by_label('Quiero', exact=False).select_option(label='BUSCO')
             pedro_page.get_by_label('Título', exact=False).fill('Looking for wool ' + suffix)
             pedro_page.get_by_label('Descripción', exact=False).fill('Need fleece, browser fixture')
@@ -113,7 +113,7 @@ def main():
 
             # --- Ana sees the source/lineage breakdown render, LISTING and WANTED kept separate,
             # never blended into one AGREEMENT-only median (MULTI_SOURCE_VALUE_EVIDENCE.md) ---
-            ana_page.goto('http://localhost:8089/stir/references')
+            ana_page.goto(BASE + '/stir/references')
             ana_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
             expect(ana_page.get_by_text('Por fuente', exact=False)).to_be_visible()
             expect(ana_page.get_by_text('Anuncios: 1', exact=False)).to_be_visible()

@@ -9,7 +9,7 @@ backend chain a third time.
 """
 import uuid
 from playwright.sync_api import sync_playwright, expect
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
@@ -64,12 +64,12 @@ def main():
         try:
             page = browser.new_context(locale='es-ES', viewport={'width': 1440, 'height': 1600}).new_page()
             page.set_default_timeout(30000); page.on('pageerror', lambda e: errors.append(str(e)))
-            page.goto('http://localhost:8089')
+            page.goto(BASE)
             page.locator('input[type=email]').fill(reviewer_login[0]); page.locator('input[type=password]').fill(reviewer_login[1])
             page.locator('button[type=submit]').click()
             page.locator('.module-card').filter(has=page.get_by_role('heading', name='STIR', exact=True)).click()
             page.locator('.surface > header select').first.select_option(label=name)
-            page.goto('http://localhost:8089/stir/references')
+            page.goto(BASE + '/stir/references')
             page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
 
             # --- The new evidence panel line: identity assurance label is visible ---

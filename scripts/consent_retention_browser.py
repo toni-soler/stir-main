@@ -7,7 +7,7 @@ proves end to end; this script's job is only to prove the new UI renders and wor
 """
 import uuid
 from playwright.sync_api import sync_playwright, expect
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
@@ -67,7 +67,7 @@ def main():
         try:
             def login(page, credentials):
                 page.set_default_timeout(30000); page.on('pageerror', lambda e: errors.append(str(e)))
-                page.goto('http://localhost:8089')
+                page.goto(BASE)
                 page.locator('input[type=email]').fill(credentials[0]); page.locator('input[type=password]').fill(credentials[1])
                 page.locator('button[type=submit]').click()
                 page.locator('.module-card').filter(has=page.get_by_role('heading', name='STIR', exact=True)).click()
@@ -76,7 +76,7 @@ def main():
             # --- Pedro: view and withdraw his own consent from the profile page ---
             pedro_page = browser.new_context(locale='es-ES', viewport={'width': 1280, 'height': 1400}).new_page()
             login(pedro_page, pedro_login)
-            pedro_page.goto('http://localhost:8089/stir/profile')
+            pedro_page.goto(BASE + '/stir/profile')
             consent_panel = pedro_page.locator('section').filter(has_text='Mi consentimiento a la evidencia de referencias')
             expect(consent_panel.get_by_text('Wool ' + suffix, exact=False).first).to_be_visible()
             consent_panel.get_by_role('button', name='Retirar', exact=True).first.click()
@@ -88,7 +88,7 @@ def main():
             # --- Manager: use the retention panel from the references page ---
             manager_page = browser.new_context(locale='es-ES', viewport={'width': 1440, 'height': 1800}).new_page()
             login(manager_page, manager_login)
-            manager_page.goto('http://localhost:8089/stir/references')
+            manager_page.goto(BASE + '/stir/references')
             manager_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
             manager_page.get_by_text('Conservación', exact=True).click()
             retention_panel = manager_page.locator('details').filter(has_text='Conservación').first

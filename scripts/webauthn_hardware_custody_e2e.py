@@ -13,6 +13,7 @@ changes the scenario.
 import base64
 import hashlib
 import json
+import os
 import uuid
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -26,7 +27,9 @@ GUARDIAN='STIR:MARKET:GUARDIAN:V1'
 POSSESSION='STIR:MARKET:POSSESSION:V1'
 BOOTSTRAP='STIR:MARKET:BOOTSTRAP:V1'
 RP_ID='localhost'
-ORIGIN='http://localhost:8089'
+# The origin the relying party accepts (one of the stack's STIR_WEBAUTHN_ALLOWED_ORIGINS, localhost:8089 by default),
+# not where this script connects: that is BASE (STIR_TEST_URL).
+ORIGIN=os.environ.get('STIR_WEBAUTHN_ORIGIN','http://localhost:8089')
 
 def canonical(value): return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()
 def digest(value): return hashlib.sha256(canonical(value)).hexdigest()

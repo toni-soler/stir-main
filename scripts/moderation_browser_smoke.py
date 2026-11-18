@@ -10,7 +10,7 @@ Isolated development fixtures only. Requires requirements-browser.txt and Edge.
 import secrets
 import uuid
 from playwright.sync_api import sync_playwright, expect
-from smoke import ROOT, request
+from smoke import BASE, ROOT, request
 from multitenant import sql
 
 MEMBER_PERMISSIONS = ['stir.listings.read', 'stir.listings.create', 'stir.listings.update',
@@ -53,7 +53,7 @@ def main():
                 page.on("pageerror", lambda error: errors.append(str(error)))
 
             def login(page, email, password):
-                page.goto("http://localhost:8089")
+                page.goto(BASE)
                 page.locator("input[type=email]").fill(email)
                 page.locator("input[type=password]").fill(password)
                 page.locator("button[type=submit]").click()
@@ -86,7 +86,7 @@ def main():
             expect(carlos.get_by_text("Gracias, tu reporte se ha enviado para revisión.")).to_be_visible()
 
             # Carlos himself has no permission to open the moderation queue directly either.
-            carlos.goto("http://localhost:8089/stir/moderation")
+            carlos.goto(BASE + "/stir/moderation")
             expect(carlos.get_by_text("Parece un fraude")).to_have_count(0)
 
             # Only the moderator can see and act on the report.

@@ -1,5 +1,9 @@
 # Changelog
 
+## E2E scripts honour STIR_TEST_URL
+
+Sixteen scripts hardcoded `http://localhost:8089`, the shared local stack's address, instead of `smoke.BASE`: run against an isolated stack, their browser went to whatever answered on the shared port. They now all use `smoke.BASE`. The WebAuthn origin the relying party accepts stays configurable on its own (`STIR_WEBAUTHN_ORIGIN`). `scripts/test_e2e_targets.py` fails if a script hardcodes the shared address again.
+
 ## User manual browser check
 
 `scripts/manual_browser_check.py` opens the user manual from the STIR tabs in a real browser and checks its chapters, styles and print layout, that every screenshot loads, and that the English copy is one link away. `scripts/manual_screenshots.py` builds an isolated synthetic community and takes the manual's screenshots from the real UI in Spanish and English; rerun it whenever an MVP changes those screens.
