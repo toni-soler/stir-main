@@ -1,5 +1,9 @@
 # Changelog
 
+## STIR role templates
+
+`deploy/extensions.json` declares STIR's roles as module role templates (idax-shell `docs/MODULE_ROLE_TEMPLATES.md`): Participante STIR (default for new members: the 16 `stir.*` permissions of ordinary use and the 7 osTRIS ones to sign exchanges), Revisor de casos, Moderación, Publicación de referencias and Electorado. The idax-shell pin moves to the release that keeps them in every workspace. `scripts/role_templates_e2e.py` and `scripts/role_templates_browser.py` prove a new workspace and a new member need no hand-made role, a disabled template role is given to nobody, existing members get it on request, and a template role is renamed but never deleted or duplicated.
+
 ## User manual browser check
 
 `scripts/manual_browser_check.py` opens the user manual from the STIR tabs in a real browser and checks its chapters, styles and print layout, that every screenshot loads, and that the English copy is one link away. `scripts/manual_screenshots.py` builds an isolated synthetic community and takes the manual's screenshots from the real UI in Spanish and English; rerun it whenever an MVP changes those screens.
