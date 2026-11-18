@@ -1,5 +1,9 @@
 # Changelog
 
+## Agreement cases E2E and osTRIS resolution pin
+
+`scripts/agreement_cases_e2e.py` (50 checks) and `scripts/agreement_cases_browser.py` prove cases end to end against a real osTRIS, including an adjudicated reversal signed by two reviewers. The osTRIS pin moves to the commit with the resolution authority and basis surface.
+
 ## feat: IDAX Shell with two-step sign-in and per-operation approvals
 
 The Shell pin moves to `449dcc9` (idax-shell `main`, built on IDAX Core Runtime 0.5.0):
