@@ -3,6 +3,9 @@
 ## E2E scripts honour STIR_TEST_URL
 
 Sixteen scripts hardcoded `http://localhost:8089`, the shared local stack's address, instead of `smoke.BASE`: run against an isolated stack, their browser went to whatever answered on the shared port. They now all use `smoke.BASE`. The WebAuthn origin the relying party accepts stays configurable on its own (`STIR_WEBAUTHN_ORIGIN`). `scripts/test_e2e_targets.py` fails if a script hardcodes the shared address again.
+## STIR role templates
+
+`deploy/extensions.json` declares STIR's roles as module role templates (idax-shell `docs/MODULE_ROLE_TEMPLATES.md`): Participante STIR (default for new members: the 16 `stir.*` permissions of ordinary use and the 7 osTRIS ones to sign exchanges), Revisor de casos, Moderación, Publicación de referencias and Electorado. The idax-shell pin moves to the release that keeps them in every workspace. `scripts/role_templates_e2e.py` and `scripts/role_templates_browser.py` prove a new workspace and a new member need no hand-made role, a disabled template role is given to nobody, existing members get it on request, and a template role is renamed but never deleted or duplicated.
 
 ## User manual browser check
 
