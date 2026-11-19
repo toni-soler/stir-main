@@ -12,6 +12,7 @@ import uuid
 from playwright.sync_api import sync_playwright, expect
 from smoke import BASE, ROOT, request
 from multitenant import sql
+from browser_ui import field
 
 MEMBER_PERMISSIONS = ['stir.listings.read', 'stir.listings.create', 'stir.listings.update',
     'stir.participants.read', 'stir.participants.update', 'stir.content.report']
@@ -72,16 +73,19 @@ def main():
             expect(moderator.get_by_role("button", name="Cola de moderación", exact=True)).to_be_visible()
 
             ana.get_by_role("button", name="+ Crear publicación", exact=True).click()
-            ana.get_by_label("Título", exact=True).fill(title)
-            ana.get_by_label("Descripción", exact=True).fill("Oferta que Carlos va a reportar")
-            ana.get_by_role("button", name="Guardar", exact=True).click()
+            ana.get_by_label(field("Título")).fill(title)
+            ana.get_by_label(field("Descripción")).fill("Oferta que Carlos va a reportar")
+            # A new listing is saved first and stays open so photos can be added; "Listo" leaves the editor.
+            ana.get_by_role("button", name="Guardar y añadir fotos", exact=True).click()
+            expect(ana.locator(".stir-success")).to_be_visible()
+            ana.get_by_role("button", name="Listo", exact=True).click()
             expect(ana.locator(".stir-card").filter(has=ana.get_by_role("button", name=title, exact=True))).to_be_visible()
 
             # Carlos finds it in the public marketplace and reports it.
-            carlos.get_by_label("Buscar", exact=True).fill(title)
+            carlos.get_by_label(field("Buscar")).fill(title)
             carlos.get_by_role("button", name=title, exact=True).click()
             carlos.get_by_role("button", name="Reportar", exact=True).click()
-            carlos.get_by_label("Motivo", exact=True).fill("Parece un fraude")
+            carlos.get_by_label(field("Motivo")).fill("Parece un fraude")
             carlos.get_by_role("button", name="Enviar reporte", exact=True).click()
             expect(carlos.get_by_text("Gracias, tu reporte se ha enviado para revisión.")).to_be_visible()
 
@@ -99,13 +103,13 @@ def main():
             # Ana's own non-"mine" view, without Ana's own ACTIVE/CLOSED control being touched
             # (already proven at the unit level - ModerationServiceTest).
             ana.get_by_role("button", name="Marketplace", exact=True).click()
-            ana.get_by_label("Buscar", exact=True).fill(title)
+            ana.get_by_label(field("Buscar")).fill(title)
             expect(ana.locator(".stir-card").filter(has=ana.get_by_role("button", name=title, exact=True))).to_have_count(0)
 
             # But it is still visible - clearly marked as hidden - in Ana's OWN "Mis publicaciones",
             # proving moderation hides from discovery without deleting the Listing itself.
             ana.get_by_role("button", name="Mis publicaciones", exact=True).click()
-            ana.get_by_label("Buscar", exact=True).fill(title)
+            ana.get_by_label(field("Buscar")).fill(title)
             expect(ana.locator(".stir-card").filter(has=ana.get_by_role("button", name=title, exact=True))).to_be_visible()
 
             assert not errors, errors

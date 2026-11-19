@@ -17,6 +17,7 @@ from playwright.sync_api import sync_playwright, expect
 from smoke import BASE, ROOT, request
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
+from browser_ui import field
 
 def add_virtual_authenticator(page):
     """A CDP virtual authenticator: automaticPresenceSimulation means every
@@ -37,7 +38,11 @@ def main():
     role=request(f'/api/shell/v1/tenants/{tenant}/roles','POST',{'key':'publisher'+suffix,'name':'Governance publisher','description':'Local browser test','enabled':True},admin,(200,201))
     request(f'/api/shell/v1/tenants/{tenant}/roles/'+role['id']+'/permissions','PUT',MEMBER+['stir.references.publish'],admin)
     ana_login=make_login(admin,tenant,role['id'],'ana',suffix)
-    ana=request('/api/shell/v1/auth/login','POST',dict(zip(['email','password'],ana_login)))['accessToken']
+    ana_session=request('/api/shell/v1/auth/login','POST',dict(zip(['email','password'],ana_login)))
+    # Community authority while Ordinary Governance is disabled is the workspace owner/admin, not a permission
+    # (ReferenceService.requireCommunityAuthority) - the same setup the HTTP E2E scripts use.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{ana_session['user']['id']}';")
+    ana=ana_session['accessToken']
     base=f'/api/stir/tenants/{tenant}'
     request(base+'/economic/marketplace/bootstrap','POST',{'communityName':name,'unitCode':'WAU','unitScale':2},ana)
 
@@ -68,11 +73,13 @@ def main():
             seat7_form=forms.nth(6)
             seat7_form.get_by_text('Credencial WebAuthn / respaldada por hardware',exact=True).click()
             seat7_form.get_by_role('button',name='Registrar credencial de hardware',exact=True).click()
-            expect(seat7_form.get_by_text('Credencial WebAuthn / respaldada por hardware',exact=True)).to_be_visible(timeout=15000)
+            # The choice's own label is visible before registering; the registered key's summary (<code>) is not.
+            expect(seat7_form.locator('code')).to_be_visible(timeout=15000)
             guardian_form=forms.nth(7)
             guardian_form.get_by_text('Credencial WebAuthn / respaldada por hardware',exact=True).click()
             guardian_form.get_by_role('button',name='Registrar credencial de hardware',exact=True).click()
-            expect(guardian_form.get_by_text('Credencial WebAuthn / respaldada por hardware',exact=True)).to_be_visible(timeout=15000)
+            # The choice's own label is visible before registering; the registered key's summary (<code>) is not.
+            expect(guardian_form.locator('code')).to_be_visible(timeout=15000)
 
             page.get_by_role('button',name='Construir la carga de inicio',exact=True).click()
             expect(page.get_by_text('Carga completa de inicio',exact=True)).to_be_visible()
@@ -97,7 +104,7 @@ def main():
             # and that WebAuthn seats participate in ordinary governance identically to Ed25519
             # ones, entirely through the rendered UI. ---
             page.get_by_text('Proponer un cambio',exact=True).click()
-            page.get_by_label('Observaciones mínimas',exact=True).fill('7')
+            page.get_by_label(field('Observaciones mínimas')).fill('7')
             page.get_by_test_id('proposal-reason').fill('Raise the observation floor after review')
             page.get_by_test_id('proposal-submit').click()
             proposal=page.locator('article.stir-panel').filter(has_text='Enmendar la constitucion').first

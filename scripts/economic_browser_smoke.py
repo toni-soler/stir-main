@@ -11,6 +11,7 @@ from playwright.sync_api import sync_playwright, expect
 from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_e2e import PERMISSIONS as MARKETPLACE_PERMISSIONS
+from browser_ui import field
 
 # OstrisClient relays the CALLER'S OWN bearer token to osTRIS (never a separate service
 # credential), so osTRIS's @PreAuthorize checks run against this same tenant role. Ana/Pedro need
@@ -65,23 +66,23 @@ def main():
 
             login(ana, ana_email, ana_password)
             ana.get_by_role("button", name="Mi perfil", exact=True).click()
-            ana.get_by_label("Nombre visible", exact=True).fill("Ana " + suffix)
+            ana.get_by_label(field("Nombre visible")).fill("Ana " + suffix)
             ana.get_by_role("button", name="Guardar", exact=True).click()
             expect(ana.get_by_text("Perfil guardado.")).to_be_visible()
             back_to_marketplace(ana)
 
             login(pedro, pedro_email, pedro_password)
             pedro.get_by_role("button", name="Mi perfil", exact=True).click()
-            pedro.get_by_label("Nombre visible", exact=True).fill("Pedro " + suffix)
+            pedro.get_by_label(field("Nombre visible")).fill("Pedro " + suffix)
             pedro.get_by_role("button", name="Guardar", exact=True).click()
             expect(pedro.get_by_text("Perfil guardado.")).to_be_visible()
             back_to_marketplace(pedro)
 
             # Ana bootstraps the marketplace's one economic community/unit, then activates herself.
             ana.get_by_role("button", name="Activación económica", exact=True).click()
-            ana.get_by_label("Nombre de la comunidad", exact=True).fill("Comunidad E2E " + suffix)
-            ana.get_by_label("Código de la unidad", exact=True).fill("CRD")
-            ana.get_by_label("Decimales", exact=True).fill("0")
+            ana.get_by_label(field("Nombre de la comunidad")).fill("Comunidad E2E " + suffix)
+            ana.get_by_label(field("Código de la unidad")).fill("CRD")
+            ana.get_by_label(field("Decimales")).fill("0")
             ana.get_by_role("button", name="Configurar comunidad económica", exact=True).click()
             ana.get_by_role("button", name="Activar intercambios", exact=True).click()
             expect(ana.get_by_text("Tu intercambio económico está activo.")).to_be_visible()
@@ -98,16 +99,19 @@ def main():
             # get_by_role("combobox", ...) rather than get_by_label: Chromium's accessible-name
             # computation for a <select> wrapped in a <label> is less reliable than for <input>.
             ana.get_by_role("combobox", name="Quiero", exact=True).select_option("WANTED")
-            ana.get_by_label("Título", exact=True).fill(title)
-            ana.get_by_label("Descripción", exact=True).fill("Necesito reparar mi bicicleta")
-            ana.get_by_role("button", name="Guardar", exact=True).click()
+            ana.get_by_label(field("Título")).fill(title)
+            ana.get_by_label(field("Descripción")).fill("Necesito reparar mi bicicleta")
+            # A new listing is saved first and stays open so photos can be added; "Listo" leaves the editor.
+            ana.get_by_role("button", name="Guardar y añadir fotos", exact=True).click()
+            expect(ana.locator(".stir-success")).to_be_visible()
+            ana.get_by_role("button", name="Listo", exact=True).click()
             expect(ana.locator(".stir-card").filter(has=ana.get_by_role("button", name=title, exact=True))).to_be_visible()
 
-            pedro.get_by_label("Buscar", exact=True).fill(title)
+            pedro.get_by_label(field("Buscar")).fill(title)
             pedro.get_by_role("button", name=title, exact=True).click()
             pedro.get_by_role("button", name="Hacer una propuesta", exact=True).click()
-            pedro.get_by_label("Mensaje", exact=True).fill("Puedo arreglarla por 500")
-            pedro.get_by_label("Importe propuesto", exact=True).fill("500")
+            pedro.get_by_label(field("Mensaje")).fill("Puedo arreglarla por 500")
+            pedro.get_by_label(field("Importe propuesto")).fill("500")
             pedro.get_by_role("button", name="Enviar propuesta", exact=True).click()
             expect(pedro.get_by_text("Abierta")).to_be_visible()
 

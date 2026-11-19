@@ -9,6 +9,7 @@ from playwright.sync_api import sync_playwright, expect
 from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_e2e import PERMISSIONS
+from browser_ui import field
 
 def make_login(admin, tenant, role_id, label, suffix):
     email = f'{label}-{suffix}@stir.test'
@@ -48,23 +49,26 @@ def main():
 
             login(ana, ana_email, ana_password)
             ana.get_by_role("button", name="Mi perfil", exact=True).click()
-            ana.get_by_label("Nombre visible", exact=True).fill("Ana "+suffix)
-            ana.get_by_label("Biografía breve", exact=True).fill("Cultivo tomates")
+            ana.get_by_label(field("Nombre visible")).fill("Ana "+suffix)
+            ana.get_by_label(field("Biografía breve")).fill("Cultivo tomates")
             ana.get_by_role("button", name="Guardar", exact=True).click()
             expect(ana.get_by_text("Perfil guardado.")).to_be_visible()
 
             ana.get_by_role("button", name="← Marketplace", exact=True).click()
             ana.get_by_role("button", name="+ Crear publicación", exact=True).click()
-            ana.get_by_label("Título", exact=True).fill(title)
-            ana.get_by_label("Descripción", exact=True).fill("Tomates San Marzano maduros")
-            ana.get_by_role("button", name="Guardar", exact=True).click()
+            ana.get_by_label(field("Título")).fill(title)
+            ana.get_by_label(field("Descripción")).fill("Tomates San Marzano maduros")
+            # A new listing is saved first and stays open so photos can be added; "Listo" leaves the editor.
+            ana.get_by_role("button", name="Guardar y añadir fotos", exact=True).click()
+            expect(ana.locator(".stir-success")).to_be_visible()
+            ana.get_by_role("button", name="Listo", exact=True).click()
             expect(ana.locator(".stir-card").filter(has=ana.get_by_role("button", name=title, exact=True))).to_be_visible()
 
             login(pedro, pedro_email, pedro_password)
-            pedro.get_by_label("Buscar", exact=True).fill(title)
+            pedro.get_by_label(field("Buscar")).fill(title)
             pedro.get_by_role("button", name=title, exact=True).click()
             pedro.get_by_role("button", name="Hacer una propuesta", exact=True).click()
-            pedro.get_by_label("Mensaje", exact=True).fill("Me interesan 15kg")
+            pedro.get_by_label(field("Mensaje")).fill("Me interesan 15kg")
             pedro.get_by_role("button", name="Enviar propuesta", exact=True).click()
             expect(pedro.get_by_text("Abierta")).to_be_visible()
 
@@ -72,7 +76,7 @@ def main():
             ana.get_by_role("button", name="Ver", exact=True).click()
             expect(ana.get_by_text("Me interesan 15kg")).to_be_visible()
             ana.get_by_role("button", name="Contraoferta", exact=True).click()
-            ana.get_by_label("Mensaje", exact=True).fill("Puedo hacer 20kg al mismo precio")
+            ana.get_by_label(field("Mensaje")).fill("Puedo hacer 20kg al mismo precio")
             ana.get_by_role("button", name="Enviar contraoferta", exact=True).click()
             expect(ana.get_by_text("Puedo hacer 20kg al mismo precio")).to_be_visible()
 

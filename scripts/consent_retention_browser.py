@@ -28,6 +28,9 @@ def main():
     pedro_login = make_login(admin, tenant, member_role['id'], 'pedro', suffix)
     manager = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], manager_login)))
     pedro = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], pedro_login)))
+    # Community authority while Ordinary Governance is disabled is the workspace owner/admin, not a permission
+    # (ReferenceService.requireCommunityAuthority) - the same setup community_references_e2e.py uses.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{manager['user']['id']}';")
     m, base = manager['accessToken'], f'/api/stir/tenants/{tenant}'
     binding = request(base + '/economic/marketplace/bootstrap', 'POST', {'communityName': name, 'unitCode': 'CRB', 'unitScale': 2}, m)
     community = binding['communityId']

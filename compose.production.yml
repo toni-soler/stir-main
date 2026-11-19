@@ -12,10 +12,18 @@ services:
       STIR_SUPPORT_CONTACT: ${STIR_SUPPORT_CONTACT:-}
       STIR_MARKETPLACE_DESCRIPTION: ${STIR_MARKETPLACE_DESCRIPTION:-}
       STIR_PRODUCTION_CHECKS_ENABLED: "true"
+      STIR_WEBAUTHN_RP_ID: ${STIR_PUBLIC_HOSTNAME:?Set STIR_PUBLIC_HOSTNAME (the public domain, e.g. stir.es) in .env for production}
       SPRINGDOC_API_DOCS_ENABLED: "false"
       SPRINGDOC_SWAGGER_UI_ENABLED: "false"
     # Loopback-only on purpose, same as dev: the reverse proxy is the only intended entry point.
     ports: ['127.0.0.1:${STIR_API_PORT:-8096}:8096']
+  governed-verifier:
+    # Registers and checks the Seven Keys' WebAuthn credentials: it must know the public site, or a hardware
+    # key registered on the real domain is rejected as coming from the wrong origin.
+    environment:
+      STIR_SITE_NAME: ${STIR_SITE_NAME:?Set STIR_SITE_NAME in .env for production}
+      STIR_PUBLIC_BASE_URL: ${STIR_PUBLIC_BASE_URL:?Set STIR_PUBLIC_BASE_URL (https://...) in .env for production}
+      STIR_WEBAUTHN_RP_ID: ${STIR_PUBLIC_HOSTNAME:?Set STIR_PUBLIC_HOSTNAME (the public domain, e.g. stir.es) in .env for production}
   shell:
     environment:
       JAVA_TOOL_OPTIONS: -Xmx512m

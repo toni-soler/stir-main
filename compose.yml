@@ -86,6 +86,10 @@ services:
       JAVA_TOOL_OPTIONS: -Xmx384m
       STIR_SITE_NAME: ${STIR_SITE_NAME:-STIR}
       STIR_PUBLIC_BASE_URL: ${STIR_PUBLIC_BASE_URL:-http://localhost:8089}
+      # WebAuthn (hardware keys for the Seven Keys) accepts only this relying-party id and these origins.
+      # The origin defaults to the public URL; a deployment on any other host must set the RP id too.
+      STIR_WEBAUTHN_RP_ID: ${STIR_WEBAUTHN_RP_ID:-localhost}
+      STIR_WEBAUTHN_ALLOWED_ORIGINS: ${STIR_WEBAUTHN_ALLOWED_ORIGINS:-${STIR_PUBLIC_BASE_URL:-http://localhost:8089}}
     secrets: [governed_verifier_password, jwt_public_key]
     depends_on:
       governed-verifier-provision: {condition: service_completed_successfully}
@@ -156,6 +160,10 @@ services:
       STORAGE_ENDPOINT: http://minio:9000
       STIR_SITE_NAME: ${STIR_SITE_NAME:-STIR}
       STIR_PUBLIC_BASE_URL: ${STIR_PUBLIC_BASE_URL:-http://localhost:8089}
+      # WebAuthn (hardware keys for the Seven Keys) accepts only this relying-party id and these origins.
+      # The origin defaults to the public URL; a deployment on any other host must set the RP id too.
+      STIR_WEBAUTHN_RP_ID: ${STIR_WEBAUTHN_RP_ID:-localhost}
+      STIR_WEBAUTHN_ALLOWED_ORIGINS: ${STIR_WEBAUTHN_ALLOWED_ORIGINS:-${STIR_PUBLIC_BASE_URL:-http://localhost:8089}}
     secrets: [runtime_password, jwt_public_key, storage_access_key, storage_secret_key]
     depends_on:
       runtime-provision: {condition: service_completed_successfully}

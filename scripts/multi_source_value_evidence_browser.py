@@ -27,6 +27,7 @@ from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
+from browser_ui import field, explain
 
 
 def main():
@@ -44,6 +45,9 @@ def main():
     pedro_login = make_login(admin, tenant, member_role['id'], 'pedro', suffix)
     manager = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], manager_login)))
     pedro = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], pedro_login)))
+    # Community authority while Ordinary Governance is disabled is the workspace owner/admin, not a permission
+    # (ReferenceService.requireCommunityAuthority) - the same setup the HTTP E2E scripts use.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{manager['user']['id']}';")
     m, base = manager['accessToken'], f'/api/stir/tenants/{tenant}'
     binding = request(base + '/economic/marketplace/bootstrap', 'POST', {'communityName': name, 'unitCode': 'MVB', 'unitScale': 2}, m)
     definition = request(base + '/references', 'POST', {'name': 'Wool ' + suffix, 'scope': 'One kilogram of raw wool',
@@ -77,11 +81,11 @@ def main():
             ana_page.get_by_label('Título', exact=False).fill('Wool bundle ' + suffix)
             ana_page.get_by_label('Descripción', exact=False).fill('Real fleece, browser fixture')
             ana_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
-            ana_page.get_by_label('Importe indicativo', exact=True).fill('40')
-            ana_page.get_by_label('Cantidad indicativa', exact=True).fill('1')
-            ana_page.get_by_label('Unidad de cantidad', exact=True).fill('kg')
-            ana_page.get_by_label('Referencia de unidad de cuenta', exact=True).fill(definition['unit_ref'])
-            ana_page.get_by_label('Usar el precio indicativo de este anuncio como evidencia de referencia comunitaria', exact=True).check()
+            ana_page.get_by_label(field('Importe indicativo')).fill('40')
+            ana_page.get_by_label(field('Cantidad indicativa')).fill('1')
+            ana_page.get_by_label(field('Unidad de cantidad')).fill('kg')
+            ana_page.get_by_label(field('Referencia de unidad de cuenta')).fill(definition['unit_ref'])
+            ana_page.get_by_label(field('Usar el precio indicativo de este anuncio como evidencia de referencia comunitaria')).check()
             ana_page.get_by_role('button', name='Guardar y añadir fotos', exact=True).click()
             expect(ana_page.get_by_role('button', name='Listo', exact=True)).to_be_visible()
             ana_page.get_by_role('button', name='Listo', exact=True).click()
@@ -93,11 +97,11 @@ def main():
             pedro_page.get_by_label('Título', exact=False).fill('Looking for wool ' + suffix)
             pedro_page.get_by_label('Descripción', exact=False).fill('Need fleece, browser fixture')
             pedro_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
-            pedro_page.get_by_label('Importe indicativo', exact=True).fill('38')
-            pedro_page.get_by_label('Cantidad indicativa', exact=True).fill('1')
-            pedro_page.get_by_label('Unidad de cantidad', exact=True).fill('kg')
-            pedro_page.get_by_label('Referencia de unidad de cuenta', exact=True).fill(definition['unit_ref'])
-            pedro_page.get_by_label('Usar el precio indicativo de este anuncio como evidencia de referencia comunitaria', exact=True).check()
+            pedro_page.get_by_label(field('Importe indicativo')).fill('38')
+            pedro_page.get_by_label(field('Cantidad indicativa')).fill('1')
+            pedro_page.get_by_label(field('Unidad de cantidad')).fill('kg')
+            pedro_page.get_by_label(field('Referencia de unidad de cuenta')).fill(definition['unit_ref'])
+            pedro_page.get_by_label(field('Usar el precio indicativo de este anuncio como evidencia de referencia comunitaria')).check()
             pedro_page.get_by_role('button', name='Guardar y añadir fotos', exact=True).click()
             expect(pedro_page.get_by_role('button', name='Listo', exact=True)).to_be_visible()
 
@@ -115,45 +119,50 @@ def main():
             # never blended into one AGREEMENT-only median (MULTI_SOURCE_VALUE_EVIDENCE.md) ---
             ana_page.goto(BASE + '/stir/references')
             ana_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
-            expect(ana_page.get_by_text('Por fuente', exact=False)).to_be_visible()
-            expect(ana_page.get_by_text('Anuncios: 1', exact=False)).to_be_visible()
-            expect(ana_page.get_by_text('Búsquedas: 1', exact=False)).to_be_visible()
-            expect(ana_page.get_by_text('Evidencia de anuncios (LISTING)', exact=False)).to_be_visible()
-            expect(ana_page.get_by_text('Evidencia de búsquedas (WANTED)', exact=False)).to_be_visible()
+            # Scoped to the reference panel: the policy form further down has hidden labels with the same words
+            # ("Aceptar evidencia de anuncios (LISTING)").
+            panel = ana_page.get_by_test_id('reference-panel')
+            expect(panel.get_by_text('Por fuente', exact=False)).to_be_visible()
+            expect(panel.get_by_text('Anuncios: 1', exact=False)).to_be_visible()
+            expect(panel.get_by_text('Búsquedas: 1', exact=False)).to_be_visible()
+            expect(panel.get_by_text('Evidencia de anuncios (LISTING)', exact=False)).to_be_visible()
+            expect(panel.get_by_text('Evidencia de búsquedas (WANTED)', exact=False)).to_be_visible()
 
             # --- PolicyForm regression proof: an unrelated field edit through the direct publisher
             # path must never silently reset listingSourceEnabled/wantedSourceEnabled back to
             # disabled (the bug this session found and fixed) ---
             ana_page.get_by_text('Política de la referencia', exact=True).click()
             policy_panel = ana_page.locator('details').filter(has_text='Política de la referencia').first
-            expect(policy_panel.get_by_label('Aceptar evidencia de anuncios (LISTING)', exact=True)).to_be_checked()
-            expect(policy_panel.get_by_label('Aceptar evidencia de búsquedas (WANTED)', exact=True)).to_be_checked()
-            policy_panel.get_by_label('Motivo de esta política', exact=True).fill('Unrelated edit - browser fixture')
+            expect(policy_panel.get_by_label(field('Aceptar evidencia de anuncios (LISTING)'))).to_be_checked()
+            expect(policy_panel.get_by_label(field('Aceptar evidencia de búsquedas (WANTED)'))).to_be_checked()
+            policy_panel.get_by_label(field('Motivo de esta política')).fill('Unrelated edit - browser fixture')
             policy_panel.get_by_role('button', name='Guardar política', exact=True).click()
             ana_page.reload()
             ana_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
             ana_page.get_by_text('Política de la referencia', exact=True).click()
             policy_panel = ana_page.locator('details').filter(has_text='Política de la referencia').first
-            expect(policy_panel.get_by_label('Aceptar evidencia de anuncios (LISTING)', exact=True)).to_be_checked()
-            expect(policy_panel.get_by_label('Aceptar evidencia de búsquedas (WANTED)', exact=True)).to_be_checked()
+            expect(policy_panel.get_by_label(field('Aceptar evidencia de anuncios (LISTING)'))).to_be_checked()
+            expect(policy_panel.get_by_label(field('Aceptar evidencia de búsquedas (WANTED)'))).to_be_checked()
 
             # --- Community Seed proposal through the ordinary-governance panel ---
             ana_page.get_by_text('Gobernanza comunitaria ordinaria', exact=True).click()
             gov = ana_page.locator('details').filter(has_text='Gobernanza comunitaria ordinaria').first
-            gov.get_by_role('checkbox').first.click()
+            # The electorate first: ordinary governance is only switched on once it holds a member (fail-closed).
             gov.get_by_text('Censo electoral', exact=True).click()
             electorate = gov.locator('details').filter(has_text='Censo electoral')
             for user_id in [manager['user']['id'], pedro['user']['id']]:
-                electorate.get_by_label('ID de usuario', exact=True).fill(user_id)
+                electorate.get_by_label(field('ID de usuario')).fill(user_id)
                 electorate.get_by_role('button', name='Añadir miembro', exact=True).click()
                 expect(electorate.get_by_text(user_id[:8], exact=False)).to_be_visible()
+            gov.get_by_role('checkbox').first.click()
+            expect(gov.get_by_text('La gobernanza ordinaria está desactivada', exact=False)).not_to_be_visible()
             gov.get_by_text('Política de votación', exact=True).click()
             voting_policy = gov.locator('details').filter(has_text='Política de votación')
-            voting_policy.get_by_label('Numerador del quorum', exact=True).fill('1')
-            voting_policy.get_by_label('Denominador del quorum', exact=True).fill('2')
-            voting_policy.get_by_label('Numerador de aprobación', exact=True).fill('2')
-            voting_policy.get_by_label('Denominador de aprobación', exact=True).fill('3')
-            voting_policy.get_by_label('Motivo de esta política', exact=True).fill('v0.1 initial policy - browser fixture')
+            voting_policy.get_by_label(field('Numerador del quorum')).fill('1')
+            voting_policy.get_by_label(field('Denominador del quorum')).fill('2')
+            voting_policy.get_by_label(field('Numerador de aprobación')).fill('2')
+            voting_policy.get_by_label(field('Denominador de aprobación')).fill('3')
+            voting_policy.get_by_label(field('Motivo de esta política')).fill('v0.1 initial policy - browser fixture')
             voting_policy.get_by_role('button', name='Guardar política', exact=True).click()
             expect(voting_policy.get_by_text('Política actual', exact=False)).to_be_visible()
 
@@ -161,10 +170,10 @@ def main():
             start_vote = gov.locator('details').filter(has_text='Iniciar una votación ordinaria')
             start_vote.get_by_role('button', name='Proponer una orientación inicial comunitaria', exact=True).click()
             seed_form = start_vote.locator('form')
-            seed_form.get_by_label('Valor orientativo inferior', exact=True).fill('30')
-            seed_form.get_by_label('Valor orientativo superior', exact=True).fill('30')
-            seed_form.get_by_label('Justificación', exact=True).fill('Initial orientation pending real evidence - browser fixture')
-            seed_form.get_by_label('Base de gobernanza', exact=True).fill('Founding assembly')
+            seed_form.get_by_label(field('Valor orientativo inferior')).fill('30')
+            seed_form.get_by_label(field('Valor orientativo superior')).fill('30')
+            seed_form.get_by_label(field('Justificación')).fill('Initial orientation pending real evidence - browser fixture')
+            seed_form.get_by_label(field('Base de gobernanza')).fill('Founding assembly')
             seed_form.get_by_role('button', name='Enviar propuesta', exact=True).click()
             expect(gov.get_by_text('Publicación de orientación inicial comunitaria', exact=True)).to_be_visible()
             expect(gov.get_by_text('Abierta a votación', exact=True)).to_be_visible()
@@ -176,6 +185,9 @@ def main():
                   'separate from AGREEMENT; an unrelated policy field edit through the direct publisher '
                   'path never reset listingSourceEnabled/wantedSourceEnabled; and a Community Seed was '
                   'proposed through a real ordinary-governance vote - no page errors.')
+        except Exception:
+            explain(ana=ana_page, pedro=pedro_page)
+            raise
         finally:
             browser.close()
 

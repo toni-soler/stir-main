@@ -13,6 +13,7 @@ from playwright.sync_api import sync_playwright, expect
 from smoke import BASE, ROOT, request
 from multitenant import sql
 from economic_browser_smoke import PERMISSIONS as ECONOMIC_PERMISSIONS
+from browser_ui import field
 
 PERMISSIONS = ECONOMIC_PERMISSIONS + ['OSTRIS_CREDENTIAL_MANAGE']
 
@@ -65,13 +66,13 @@ def main():
             login(pedro, pedro_email, pedro_password)
 
             ana1.get_by_role("button", name="Mi perfil", exact=True).click()
-            ana1.get_by_label("Nombre visible", exact=True).fill("Ana " + suffix)
+            ana1.get_by_label(field("Nombre visible")).fill("Ana " + suffix)
             ana1.get_by_role("button", name="Guardar", exact=True).click()
             expect(ana1.get_by_text("Perfil guardado.")).to_be_visible()
             back_to_marketplace(ana1)
 
             pedro.get_by_role("button", name="Mi perfil", exact=True).click()
-            pedro.get_by_label("Nombre visible", exact=True).fill("Pedro " + suffix)
+            pedro.get_by_label(field("Nombre visible")).fill("Pedro " + suffix)
             pedro.get_by_role("button", name="Guardar", exact=True).click()
             expect(pedro.get_by_text("Perfil guardado.")).to_be_visible()
             back_to_marketplace(pedro)
@@ -79,9 +80,9 @@ def main():
             # Device 1: Ana bootstraps the community and activates - this is her first, and so far
             # only, signing device.
             ana1.get_by_role("button", name="Activación económica", exact=True).click()
-            ana1.get_by_label("Nombre de la comunidad", exact=True).fill("Comunidad Cred E2E " + suffix)
-            ana1.get_by_label("Código de la unidad", exact=True).fill("CRD")
-            ana1.get_by_label("Decimales", exact=True).fill("0")
+            ana1.get_by_label(field("Nombre de la comunidad")).fill("Comunidad Cred E2E " + suffix)
+            ana1.get_by_label(field("Código de la unidad")).fill("CRD")
+            ana1.get_by_label(field("Decimales")).fill("0")
             ana1.get_by_role("button", name="Configurar comunidad económica", exact=True).click()
             ana1.get_by_role("button", name="Activar intercambios", exact=True).click()
             expect(ana1.get_by_text("Tu intercambio económico está activo.")).to_be_visible()
@@ -99,7 +100,7 @@ def main():
             ana2.get_by_role("button", name="Activación económica", exact=True).click()
             expect(ana2.get_by_text("Tu intercambio económico está activo.")).to_be_visible()
             expect(ana2.get_by_text("Este dispositivo/navegador todavía no está registrado como firmante.")).to_be_visible()
-            ana2.get_by_label("Nombre del dispositivo", exact=True).fill("Portátil de Ana")
+            ana2.get_by_label(field("Nombre del dispositivo")).fill("Portátil de Ana")
             ana2.get_by_role("button", name="Añadir este dispositivo", exact=True).click()
             expect(ana2.get_by_text("Portátil de Ana")).to_be_visible()
 
@@ -134,16 +135,19 @@ def main():
             back_to_marketplace(ana2)
             ana2.get_by_role("button", name="+ Crear publicación", exact=True).click()
             ana2.get_by_role("combobox", name="Quiero", exact=True).select_option("OFFER")
-            ana2.get_by_label("Título", exact=True).fill(title)
-            ana2.get_by_label("Descripción", exact=True).fill("Clases de guitarra para principiantes")
-            ana2.get_by_role("button", name="Guardar", exact=True).click()
+            ana2.get_by_label(field("Título")).fill(title)
+            ana2.get_by_label(field("Descripción")).fill("Clases de guitarra para principiantes")
+            # A new listing is saved first and stays open so photos can be added; "Listo" leaves the editor.
+            ana2.get_by_role("button", name="Guardar y añadir fotos", exact=True).click()
+            expect(ana2.locator(".stir-success")).to_be_visible()
+            ana2.get_by_role("button", name="Listo", exact=True).click()
             expect(ana2.locator(".stir-card").filter(has=ana2.get_by_role("button", name=title, exact=True))).to_be_visible()
 
-            pedro.get_by_label("Buscar", exact=True).fill(title)
+            pedro.get_by_label(field("Buscar")).fill(title)
             pedro.get_by_role("button", name=title, exact=True).click()
             pedro.get_by_role("button", name="Hacer una propuesta", exact=True).click()
-            pedro.get_by_label("Mensaje", exact=True).fill("Me interesan las clases")
-            pedro.get_by_label("Importe propuesto", exact=True).fill("100")
+            pedro.get_by_label(field("Mensaje")).fill("Me interesan las clases")
+            pedro.get_by_label(field("Importe propuesto")).fill("100")
             pedro.get_by_role("button", name="Enviar propuesta", exact=True).click()
             expect(pedro.get_by_text("Abierta")).to_be_visible()
 
