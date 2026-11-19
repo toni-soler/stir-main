@@ -8,6 +8,7 @@ from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
+from browser_ui import field
 
 def main():
     admin=request('/api/shell/v1/auth/login','POST',{'email':'admin@stir.test',
@@ -18,7 +19,11 @@ def main():
     request(f'/api/shell/v1/tenants/{tenant}/roles/'+role['id']+'/permissions','PUT',MEMBER+['stir.references.publish'],admin)
     ana_login=make_login(admin,tenant,role['id'],'ana',suffix)
     pedro_login=make_login(admin,tenant,role['id'],'pedro',suffix)
-    a=request('/api/shell/v1/auth/login','POST',dict(zip(['email','password'],ana_login)))['accessToken']
+    ana_session=request('/api/shell/v1/auth/login','POST',dict(zip(['email','password'],ana_login)))
+    # Community authority while Ordinary Governance is disabled is the workspace owner/admin, not a permission
+    # (ReferenceService.requireCommunityAuthority) - the same setup community_references_e2e.py uses.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{ana_session['user']['id']}';")
+    a=ana_session['accessToken']
     base=f'/api/stir/tenants/{tenant}'
     binding=request(base+'/economic/marketplace/bootstrap','POST',{'communityName':name,'unitCode':'REF','unitScale':2},a)
     with sync_playwright() as pw:
@@ -35,20 +40,20 @@ def main():
             login(ana,ana_login)
             ana.goto(BASE + '/stir/references')
             ana.get_by_text('Crear definición comparable',exact=True).first.click()
-            ana.get_by_label('Nombre',exact=True).fill('Pan 500g '+suffix)
-            ana.get_by_label('Ámbito de comparación',exact=True).fill('Una barra de pan de 500g')
-            ana.get_by_label('Unidad de cantidad',exact=True).fill('barra')
+            ana.get_by_label(field('Nombre')).fill('Pan 500g '+suffix)
+            ana.get_by_label(field('Ámbito de comparación')).fill('Una barra de pan de 500g')
+            ana.get_by_label(field('Unidad de cantidad')).fill('barra')
             ana.get_by_role('button',name='Crear definición comparable',exact=True).click()
             expect(ana.get_by_text('Datos insuficientes',exact=True)).to_be_visible()
             def publish(page,amount,explanation,decision):
                 summary=page.locator('summary').filter(has_text='Proponer referencia')
-                if not page.get_by_label('Valor orientativo inferior',exact=True).is_visible():summary.click()
-                page.get_by_label('Valor orientativo inferior',exact=True).fill(amount)
-                page.get_by_label('Valor orientativo superior',exact=True).fill(amount)
-                page.get_by_label('Explicación humana',exact=True).fill(explanation)
-                page.get_by_label('Método / origen de la decisión',exact=True).fill('Asamblea comunitaria')
+                if not page.get_by_label(field('Valor orientativo inferior')).is_visible():summary.click()
+                page.get_by_label(field('Valor orientativo inferior')).fill(amount)
+                page.get_by_label(field('Valor orientativo superior')).fill(amount)
+                page.get_by_label(field('Explicación humana')).fill(explanation)
+                page.get_by_label(field('Método / origen de la decisión')).fill('Asamblea comunitaria')
                 page.get_by_role('button',name='Proponer referencia',exact=True).click()
-                page.get_by_label('Decisión de publicación',exact=True).fill(decision)
+                page.get_by_label(field('Decisión de publicación')).fill(decision)
                 page.get_by_role('button',name='Publicar nueva versión',exact=True).click()
                 expect(page.get_by_test_id('reference-panel').get_by_text(explanation,exact=True)).to_be_visible()
             publish(ana,'10','Convención inicial revisable','Primera asamblea')
@@ -62,17 +67,17 @@ def main():
             ana.get_by_role('button',name='Listo',exact=True).click()
             login(pedro,pedro_login)
             pedro.goto(BASE + '/stir')
-            pedro.get_by_label('Buscar',exact=True).fill(title)
+            pedro.get_by_label(field('Buscar')).fill(title)
             pedro.get_by_role('button',name=title,exact=True).click()
             expect(pedro.get_by_text('Convención inicial revisable',exact=True)).to_be_visible()
             pedro.get_by_text('¿Por qué me muestran esta referencia?',exact=True).click()
             expect(pedro.get_by_text('Datos insuficientes',exact=True)).to_be_visible()
             pedro.get_by_role('button',name='Hacer una propuesta',exact=True).click()
-            pedro.get_by_label('Mensaje',exact=True).fill('Propongo por debajo de la referencia')
-            pedro.get_by_label('Cantidad',exact=True).fill('1')
-            pedro.get_by_label('Unidad',exact=True).fill('barra')
-            pedro.get_by_label('Importe propuesto',exact=True).fill('1')
-            expect(pedro.get_by_label('Referencia de unidad',exact=True)).to_have_value(binding['unitId'])
+            pedro.get_by_label(field('Mensaje')).fill('Propongo por debajo de la referencia')
+            pedro.get_by_label(field('Cantidad')).fill('1')
+            pedro.get_by_label(field('Unidad')).fill('barra')
+            pedro.get_by_label(field('Importe propuesto')).fill('1')
+            expect(pedro.get_by_label(field('Referencia de unidad'))).to_have_value(binding['unitId'])
             pedro.get_by_role('checkbox').check()
             expect(pedro.get_by_text('Por debajo de la referencia (permitido)',exact=False)).to_be_visible()
             pedro.get_by_role('button',name='Enviar propuesta',exact=True).click()
@@ -80,9 +85,9 @@ def main():
             negotiation_url=pedro.url
             ana.goto(negotiation_url)
             ana.get_by_role('button',name='Contraoferta',exact=True).click()
-            ana.get_by_label('Mensaje',exact=True).fill('Propongo por encima de la referencia')
-            ana.get_by_label('Cantidad',exact=True).fill('1');ana.get_by_label('Unidad',exact=True).fill('barra')
-            ana.get_by_label('Importe propuesto',exact=True).fill('100');expect(ana.get_by_label('Referencia de unidad',exact=True)).to_have_value(binding['unitId'])
+            ana.get_by_label(field('Mensaje')).fill('Propongo por encima de la referencia')
+            ana.get_by_label(field('Cantidad')).fill('1');ana.get_by_label(field('Unidad')).fill('barra')
+            ana.get_by_label(field('Importe propuesto')).fill('100');expect(ana.get_by_label(field('Referencia de unidad'))).to_have_value(binding['unitId'])
             ana.get_by_role('checkbox').last.check()
             expect(ana.get_by_text('Por encima de la referencia (permitido)',exact=False)).to_be_visible()
             ana.get_by_role('button',name='Enviar contraoferta',exact=True).click()

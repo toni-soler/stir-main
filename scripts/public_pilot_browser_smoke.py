@@ -9,6 +9,7 @@ from multitenant import sql
 from economic_browser_smoke import PERMISSIONS as ECONOMIC_PERMISSIONS
 import secrets
 import uuid
+from browser_ui import field, test_images
 
 PERMISSIONS = ECONOMIC_PERMISSIONS + ['stir.notifications.read', 'stir.content.report', 'stir.moderation.manage']
 ASSETS = ROOT / '.local/test-assets'
@@ -33,6 +34,7 @@ def main():
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(channel="msedge", headless=True)
+        test_images(browser, ASSETS)
         errors = []
         try:
             ana = browser.new_context(locale="es-ES", viewport={"width": 1440, "height": 1000}).new_page()
@@ -48,7 +50,7 @@ def main():
 
             # Profile + avatar upload (section 6).
             ana.get_by_role("button", name="Mi perfil", exact=True).click()
-            ana.get_by_label("Nombre visible", exact=True).fill("Ana " + suffix)
+            ana.get_by_label(field("Nombre visible")).fill("Ana " + suffix)
             ana.get_by_role("button", name="Guardar", exact=True).click()
             expect(ana.get_by_text("Perfil guardado.")).to_be_visible()
             ana.get_by_label("Subir foto").set_input_files(str(ASSETS / "test-avatar.png"))
@@ -58,12 +60,15 @@ def main():
             # can only be uploaded once the listing itself exists and has an id).
             ana.get_by_role("button", name="← Marketplace", exact=True).click()
             ana.get_by_role("button", name="+ Crear publicación", exact=True).click()
-            ana.get_by_label("Título", exact=True).fill(title)
-            ana.get_by_label("Descripción", exact=True).fill("Piezas de cerámica hechas a mano")
-            ana.get_by_role("button", name="Guardar", exact=True).click()
+            ana.get_by_label(field("Título")).fill(title)
+            ana.get_by_label(field("Descripción")).fill("Piezas de cerámica hechas a mano")
+            # A new listing is saved first and stays open so photos can be added; "Listo" leaves the editor.
+            ana.get_by_role("button", name="Guardar y añadir fotos", exact=True).click()
+            expect(ana.locator(".stir-success")).to_be_visible()
+            ana.get_by_role("button", name="Listo", exact=True).click()
             expect(ana.locator(".stir-card").filter(has=ana.get_by_role("button", name=title, exact=True))).to_be_visible()
             ana.locator(".stir-card").filter(has=ana.get_by_role("button", name=title, exact=True)).get_by_role("button", name="Editar", exact=True).click()
-            ana.get_by_label("Fotos", exact=True).set_input_files(str(ASSETS / "test-photo.jpg"))
+            ana.get_by_label(field("Fotos")).set_input_files(str(ASSETS / "test-photo.jpg"))
             expect(ana.locator(".stir-photo-item img")).to_be_visible(timeout=15000)
             expect(ana.get_by_text("1/6")).to_be_visible()
 

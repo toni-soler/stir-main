@@ -11,6 +11,7 @@ from playwright.sync_api import sync_playwright, expect
 from smoke import BASE, ROOT, request
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
+from browser_ui import field
 
 def main():
     admin=request('/api/shell/v1/auth/login','POST',{'email':'admin@stir.test',
@@ -21,7 +22,11 @@ def main():
     role=request(f'/api/shell/v1/tenants/{tenant}/roles','POST',{'key':'publisher'+suffix,'name':'Governance publisher','description':'Local browser test','enabled':True},admin,(200,201))
     request(f'/api/shell/v1/tenants/{tenant}/roles/'+role['id']+'/permissions','PUT',MEMBER+['stir.references.publish'],admin)
     ana_login=make_login(admin,tenant,role['id'],'ana',suffix)
-    ana=request('/api/shell/v1/auth/login','POST',dict(zip(['email','password'],ana_login)))['accessToken']
+    ana_session=request('/api/shell/v1/auth/login','POST',dict(zip(['email','password'],ana_login)))
+    # Community authority while Ordinary Governance is disabled is the workspace owner/admin, not a permission
+    # (ReferenceService.requireCommunityAuthority) - the same setup the HTTP E2E scripts use.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{ana_session['user']['id']}';")
+    ana=ana_session['accessToken']
     base=f'/api/stir/tenants/{tenant}'
     request(base+'/economic/marketplace/bootstrap','POST',{'communityName':name,'unitCode':'GOV','unitScale':2},ana)
 
@@ -65,7 +70,7 @@ def main():
 
             # --- Ordinary amendment: raise the operational observation floor, 7-of-7 ---
             page.get_by_text('Proponer un cambio',exact=True).click()
-            page.get_by_label('Observaciones mínimas',exact=True).fill('7')
+            page.get_by_label(field('Observaciones mínimas')).fill('7')
             page.get_by_test_id('proposal-reason').fill('Raise the observation floor after review')
             page.get_by_test_id('proposal-submit').click()
             proposal=page.locator('article.stir-panel').filter(has_text='Enmendar la constitucion').first
@@ -85,7 +90,7 @@ def main():
             page.get_by_text('Suspender un asiento de emergencia',exact=False).click()
             suspend=page.locator('details').filter(has_text='Suspender un asiento de emergencia')
             suspend.locator('select').select_option('7')
-            suspend.get_by_label('Codigo de motivo',exact=True).fill('DEVICE_LOST')
+            suspend.get_by_label(field('Codigo de motivo')).fill('DEVICE_LOST')
             suspend.get_by_role('button',name='Firmar con la clave de este dispositivo',exact=True).click()
             suspend.get_by_role('button',name='Suspender',exact=True).click()
             expect(page.get_by_text('Asiento 7: EMERGENCY_SUSPENDED',exact=False)).to_be_visible()

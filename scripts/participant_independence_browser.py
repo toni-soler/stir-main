@@ -34,6 +34,9 @@ def main():
     reviewer = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], reviewer_login)))
     pedro = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], pedro_login)))
     carlos = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], carlos_login)))
+    # Community authority while Ordinary Governance is disabled is the workspace owner/admin, not a permission
+    # (ReferenceService.requireCommunityAuthority) - the same setup the HTTP E2E scripts use.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{reviewer['user']['id']}';")
     r, base = reviewer['accessToken'], f'/api/stir/tenants/{tenant}'
     binding = request(base+'/economic/marketplace/bootstrap', 'POST', {'communityName': name, 'unitCode': 'IND', 'unitScale': 2}, r)
     community = binding['communityId']

@@ -16,6 +16,7 @@ from smoke import BASE, ROOT, request
 from multitenant import sql
 from marketplace_browser_smoke import make_login
 from community_references_e2e import MEMBER
+from browser_ui import field, explain
 
 def main():
     admin = request('/api/shell/v1/auth/login', 'POST', {'email': 'admin@stir.test',
@@ -34,6 +35,9 @@ def main():
     manager = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], manager_login)))
     v1 = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], v1_login)))
     v2 = request('/api/shell/v1/auth/login', 'POST', dict(zip(['email', 'password'], v2_login)))
+    # Community authority while Ordinary Governance is disabled is the workspace owner/admin, not a permission
+    # (ReferenceService.requireCommunityAuthority) - the same setup the HTTP E2E scripts use.
+    sql(f"update idax_core.tenant_user set role='admin' where tenant_id='{tenant}' and user_id='{manager['user']['id']}';")
     m, base = manager['accessToken'], f'/api/stir/tenants/{tenant}'
     binding = request(base+'/economic/marketplace/bootstrap', 'POST', {'communityName': name, 'unitCode': 'OGB', 'unitScale': 2}, m)
     community = binding['communityId']
@@ -65,29 +69,29 @@ def main():
             manager_page.get_by_text('Gobernanza comunitaria ordinaria', exact=True).click()
             gov = manager_page.locator('details').filter(has_text='Gobernanza comunitaria ordinaria').first
 
-            # --- Enable governance for this community ---
-            gov.get_by_role('checkbox').click()
-            expect(gov.get_by_text('La gobernanza ordinaria está desactivada', exact=False)).not_to_be_visible()
-
-            # --- Build the electorate: manager + both voters ---
+            # --- Build the electorate first: manager + both voters ---
             gov.get_by_text('Censo electoral', exact=True).click()
             electorate = gov.locator('details').filter(has_text='Censo electoral')
             for user_id in [manager['user']['id'], v1['user']['id'], v2['user']['id']]:
-                electorate.get_by_label('ID de usuario', exact=True).fill(user_id)
+                electorate.get_by_label(field('ID de usuario')).fill(user_id)
                 electorate.get_by_role('button', name='Añadir miembro', exact=True).click()
                 # The button is disabled while its own request is in flight - wait for this
                 # member's own id to actually render in the list before starting the next add,
                 # rather than racing three rapid submits against the same async form.
                 expect(electorate.get_by_text(user_id[:8], exact=False)).to_be_visible()
 
+            # --- Enable governance for this community: only once the electorate holds a member (fail-closed) ---
+            gov.get_by_role('checkbox').click()
+            expect(gov.get_by_text('La gobernanza ordinaria está desactivada', exact=False)).not_to_be_visible()
+
             # --- Set the voting policy: quorum 1/2, approval 2/3 ---
             gov.get_by_text('Política de votación', exact=True).click()
             policy_form = gov.locator('details').filter(has_text='Política de votación')
-            policy_form.get_by_label('Numerador del quorum', exact=True).fill('1')
-            policy_form.get_by_label('Denominador del quorum', exact=True).fill('2')
-            policy_form.get_by_label('Numerador de aprobación', exact=True).fill('2')
-            policy_form.get_by_label('Denominador de aprobación', exact=True).fill('3')
-            policy_form.get_by_label('Motivo de esta política', exact=True).fill('v0.1 initial policy - browser fixture')
+            policy_form.get_by_label(field('Numerador del quorum')).fill('1')
+            policy_form.get_by_label(field('Denominador del quorum')).fill('2')
+            policy_form.get_by_label(field('Numerador de aprobación')).fill('2')
+            policy_form.get_by_label(field('Denominador de aprobación')).fill('3')
+            policy_form.get_by_label(field('Motivo de esta política')).fill('v0.1 initial policy - browser fixture')
             policy_form.get_by_role('button', name='Guardar política', exact=True).click()
             expect(policy_form.get_by_text('Política actual', exact=False)).to_be_visible()
 
@@ -118,7 +122,7 @@ def main():
             # --- A publisher trying to bypass the vote with the old direct-publish button fails ---
             manager_page.reload()
             manager_page.get_by_label('Definición comparable', exact=False).select_option(value=definition_id)
-            manager_page.get_by_label('Decisión de publicación', exact=True).fill('Bypass attempt')
+            manager_page.get_by_label(field('Decisión de publicación')).fill('Bypass attempt')
             publish_buttons = manager_page.get_by_role('button', name='Publicar nueva versión', exact=True)
             if publish_buttons.count() > 0:
                 publish_buttons.first.click()
@@ -129,6 +133,9 @@ def main():
                   'saved, a real ordinary vote started on a real reference proposal, two independent '
                   'voter sessions cast real votes with the tally updating live, direct publish blocked '
                   'once governance is active - all through the rendered UI, no page errors.')
+        except Exception:
+            explain(manager=manager_page, v1=v1_page)
+            raise
         finally:
             browser.close()
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## Every browser script passes against an isolated stack; WebAuthn follows the public URL
+
+The fourteen browser scripts that used to hardcode the shared stack's address had silently drifted from the UI and the security model. All of them, with the four that already ran, now pass together against an isolated stack:
+
+- labels are matched by their start (`scripts/browser_ui.py` `field()`), since a required marker or a hint follows the label text;
+- a new listing is saved with "Guardar y añadir fotos" and left with "Listo";
+- reference publishers and market-integrity deciders are made workspace administrators, the community authority while ordinary governance is off, as the HTTP E2E scripts already did;
+- the electorate is built before ordinary governance is switched on;
+- `browser-smoke.py` publishes as an ordinary member (who joins as a STIR participant through the role template), since a platform administrator cannot write STIR data since V17;
+- `public_pilot_browser_smoke.py` renders its own test images (`browser_ui.test_images`);
+- a failed run prints what each page showed (`browser_ui.explain`).
+
+`compose.yml` now passes `STIR_WEBAUTHN_RP_ID` (default `localhost`) and `STIR_WEBAUTHN_ALLOWED_ORIGINS` (default: the public URL) to `stir` and `governed-verifier`; `compose.production.yml` requires `STIR_PUBLIC_HOSTNAME` as the relying-party id and gives `governed-verifier` the public URL. Before this, the backend's defaults (`localhost`, `http://localhost:8089`) applied everywhere, so hardware keys for the Seven Keys were rejected on any other host, stir.es included.
+
 ## E2E scripts honour STIR_TEST_URL
 
 Sixteen scripts hardcoded `http://localhost:8089`, the shared local stack's address, instead of `smoke.BASE`: run against an isolated stack, their browser went to whatever answered on the shared port. They now all use `smoke.BASE`. The WebAuthn origin the relying party accepts stays configurable on its own (`STIR_WEBAUTHN_ORIGIN`). `scripts/test_e2e_targets.py` fails if a script hardcodes the shared address again.
